@@ -31,7 +31,7 @@ export async function runCanonGate(
   const procedures: Record<string, Procedure | null> = {};
   const bindingsByPage: Record<string, Binding[]> = {};
 
-  for (const pageId of pageIds) {
+  await Promise.all(pageIds.map(async (pageId) => {
     let live: number | 'NOT_FOUND';
     try {
       live = (await deps.getPageMeta(pageId)).currentVersion;
@@ -51,7 +51,7 @@ export async function runCanonGate(
     }
     procedures[pageId] = proc;
     bindingsByPage[pageId] = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.pageId === pageId);
-  }
+  }));
 
   const bindings = pageIds.flatMap((id) => bindingsByPage[id] ?? []);
   const attestations: Record<string, Attestation | null> = {};

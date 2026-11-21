@@ -119,7 +119,34 @@ describe('runCanonGate', () => {
     expect(await runCanonGate('PAY-1', deps)).toMatchObject({ allow: true, reasons: [] });
   });
 
-  it('404 orphans the binding and blocks', async () => {
+  it('inline supersede is idempotent across repeated runs', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(4) });
+    await repos.procedures.put(procedure(PAGE, { policy: 'every-major' }));
+    await repos.bindings.put(binding('b1'));
+    const first = await runCanonGate('PAY-1', deps);
+    const snap = async (): Promise<string> =>
+      JSON.stringify([
+        await repos.bindings.get('b1'),
+        await repos.procedures.get(PAGE),
+        await repos.audit.list('PAY-1'),
+      ]);
+    const afterFirst = await snap();
+    const second = await runCanonGate('PAY-1', deps);
+    expect(await snap()).toBe(afterFirst);
+    expect(second).toEqual(first);
+    const events = await repos.audit.list('PAY-1');
+    expect(events.filter((e) => e.type === 'SUPERSEDED')).toHaveLength(1);
+  });
+
+  it('binding without a procedure is UNVERIFIED and blocks', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(3) });
+    await repos.bindings.put(binding('b1'));
+    const d = await runCanonGate('PAY-1', deps);
+    expect(d.allow).toBe(false);
+    expect(d.reasons[0]?.code).toBe('UNVERIFIED');
+  });
+
+  it('404 makes the gate block with ORPHANED (gate does not persist; reconcile does)', async () => {
     const { repos, deps } = setup({ [PAGE]: new Error('Confluence getPage failed: 404') });
     await repos.procedures.put(procedure());
     await repos.bindings.put(binding('b1'));

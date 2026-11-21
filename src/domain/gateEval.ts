@@ -69,9 +69,9 @@ function evaluateBinding(
 
 function sentence(r: GateReason, issueKey: string): string {
   if (r.code === 'ORPHANED') {
-    return `Canon: the bound procedure "${r.title}" was deleted, archived or is no longer visible to Canon.`;
+    return 'Canon: a bound procedure was deleted, archived or is no longer visible to Canon.';
   }
-  const head = `Canon: "${r.title}" was revised v${r.boundVersion} → v${r.targetVersion} while ${issueKey} was open.`;
+  const head = `Canon: the bound procedure was revised v${r.boundVersion} → v${r.targetVersion} while ${issueKey} was open.`;
   if (r.openItems === undefined) return `${head} Re-attest the changes in the Canon panel.`;
   const n = r.openItems;
   return `${head} ${n} ${n === 1 ? 'change needs' : 'changes need'} re-attestation in the Canon panel.`;
