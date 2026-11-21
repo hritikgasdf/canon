@@ -16,8 +16,8 @@ export class OverrideError extends Error {
   }
 }
 
-export const REASON_MIN = 20;
-export const REASON_MAX = 1000;
+import { REASON_MIN, REASON_MAX } from './limits';
+export { REASON_MIN, REASON_MAX };
 
 export async function breakGlass(
   repos: Repos,

@@ -11,3 +11,6 @@ Canon is an Atlassian Forge app (Jira required, Confluence optional) that blocks
 - Tests: Vitest (`npm test`). Typecheck: `npm run typecheck`. Lint: `npm run lint`. All three must pass before you finish.
 - Safety logic (the gate) must fail CLOSED: any error/timeout → block with a clear message.
 - Finish with a 5-line summary: files changed, commands run, results, open gaps.
+
+## Frontend bundle rule
+src/frontend/** may import only types, or dependency-free modules (e.g. src/domain/limits.ts), from src/domain. Never import a module that pulls in node:* (audit.ts uses node:crypto); the Forge UI bundle fails with UnhandledSchemeError.

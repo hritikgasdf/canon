@@ -22,7 +22,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
-import { REASON_MIN } from '../domain/override';
+import { REASON_MIN } from '../domain/limits';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
