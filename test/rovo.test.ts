@@ -239,8 +239,42 @@ describe('write-side actions', () => {
     const a = await create(wdeps, ids);
     const before = await auditTypes(wdeps);
     const b = await create(wdeps, ids, {}, 'carol');
-    expect(b).toEqual(a);
+    expect(b).toEqual({ ...a, status: 'ALREADY_CREATED' });
     expect(await auditTypes(wdeps)).toEqual(before);
+  });
+
+  it('a rephrased second call keeps the first suggestion and writes no audit event', async () => {
+    const { wdeps, ids } = await setupW();
+    await create(wdeps, ids);
+    const before = await auditTypes(wdeps);
+    const r = await rovoCreateChecklist(
+      'PAY-1',
+      'alice',
+      { itemIdsJson: JSON.stringify(ids.slice(0, 1)), tasksJson: JSON.stringify(['Verify the limit again, rephrased']) },
+      wdeps,
+    );
+    expect(r).toMatchObject({ ok: true, status: 'ALREADY_CREATED' });
+    if (r.ok) expect(r.items.find((i) => i.itemId === ids[0])?.rovoTask).toBe('Check the limit');
+    expect(await auditTypes(wdeps)).toEqual(before);
+  });
+
+  it('a second call with a new item id sets only that item', async () => {
+    const { wdeps, ids } = await setupW();
+    if (ids.length < 2) return;
+    await create(wdeps, ids);
+    const r = await rovoCreateChecklist(
+      'PAY-1',
+      'alice',
+      { itemIdsJson: JSON.stringify(ids.slice(0, 2)), tasksJson: JSON.stringify(['Other text', 'Second item task']) },
+      wdeps,
+    );
+    expect(r).toMatchObject({ ok: true, status: 'CREATED' });
+    if (r.ok) {
+      expect(r.items.find((i) => i.itemId === ids[0])?.rovoTask).toBe('Check the limit');
+      expect(r.items.find((i) => i.itemId === ids[1])?.rovoTask).toBe('Second item task');
+    }
+    const events = (await wdeps.repos.audit.list('PAY-1')).filter((e) => e.type === 'ROVO_TASKS_SET');
+    expect(events[events.length - 1].payload.itemIds).toEqual([ids[1]]);
   });
 
   it('rejects an unknown item id and writes nothing', async () => {

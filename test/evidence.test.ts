@@ -187,8 +187,8 @@ describe('evidence resolvers', () => {
     const spy = vi.fn(async (ids: string[]) => Object.fromEntries(ids.map((i) => [i, 'Dana Lee'])));
     d.displayNames = spy;
     const r = await evidenceHandler({ context: ctx }, d);
-    expect(r.ok && r.pack.actorNames).toEqual({ u: 'Dana Lee', acct9: 'Dana Lee' });
-    expect(spy).toHaveBeenCalledWith(['u', 'acct9']);
+    expect(r.ok && r.pack.actorNames).toEqual({ u: 'Dana Lee', acct9: 'Dana Lee', impl: 'Dana Lee' });
+    expect(spy).toHaveBeenCalledWith(['u', 'acct9', 'impl']);
     d.displayNames = async () => {
       throw new Error('jira down');
     };
