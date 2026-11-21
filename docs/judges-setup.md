@@ -57,3 +57,6 @@ The gate checks **the procedure version**, not whether the person clicking Done 
 - If a **newer approved version** exists, Done is **blocked** for everyone. The message names no procedure, and re-attestation needs someone who can read the changes.
 - If **Canon itself** can't read the page (no space access, deleted page, Confluence error), Done **fails closed**.
 Page restrictions decide who may *read* the procedure. They don't decide who may close work that already follows the approved version.
+
+## 10. Rovo: how write actions are confirmed
+Creating the re-attestation checklist and assigning a checker are write actions. Rovo always shows a **confirmation card** for them, and they run only when you click **Confirm** on that card. Typing "yes" in the chat isn't enough; this is Rovo's own safety step for app actions that change data, and Canon keeps it. The agent tells you to click Confirm. Asking again after creation returns "already created" and doesn't duplicate anything.
