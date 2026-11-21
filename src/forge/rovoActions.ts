@@ -1,82 +1,58 @@
-import api, { route } from '@forge/api';
-import { parseBinding, type Binding } from '../domain/gate';
-import { toGateStatus, type GateStatusOk } from '../domain/gateStatus';
+// Rovo action handlers, called as handler(payload, context). The issue key comes only from
+// payload.context.jira.issueKey (trusted); action inputs are never used for authorisation.
+import { rovoApprovedProcedure, rovoExplainDelta, rovoGateStatus, type RovoDeps } from '../domain/rovo';
+import { canUserView, fetchBody, getPageMeta } from './confluence';
+import { createAppRepos } from './kvsRepos';
+
+type Failure = { ok: false; error: string; message: string };
+
+const ISSUE_KEY = /^[A-Z][A-Z0-9_]+-\d+$/;
 
 function extractIssueKey(payload: unknown): string | null {
-  const ctx = payload as { context?: { jira?: { issueKey?: unknown } } } | null | undefined;
-  const key = ctx?.context?.jira?.issueKey;
-  return typeof key === 'string' && key !== '' ? key : null;
+  const raw = (payload as { context?: { jira?: { issueKey?: unknown } } } | null | undefined)?.context?.jira?.issueKey;
+  const key = typeof raw === 'number' ? String(raw) : raw;
+  return typeof key === 'string' && ISSUE_KEY.test(key) ? key : null;
 }
 
-async function lookup(issueKey: string): Promise<GateStatusOk> {
-  const bindingRes = await api
-    .asApp()
-    .requestJira(route`/rest/api/3/issue/${issueKey}/properties/canon-binding`);
-  if (bindingRes.status === 404) {
-    return toGateStatus({ issueKey, binding: null, currentVersion: null });
-  }
-  if (!bindingRes.ok) {
-    return toGateStatus({
-      issueKey,
-      binding: null,
-      currentVersion: null,
-      error: `Canon could not read the binding for ${issueKey} (HTTP ${bindingRes.status}). Try again later.`,
-    });
-  }
-  const json = (await bindingRes.json()) as { value?: unknown };
-  if (json.value === null || json.value === undefined) {
-    return toGateStatus({ issueKey, binding: null, currentVersion: null });
-  }
+const noContext = (): Failure => ({ ok: false, error: 'NO_CONTEXT', message: 'Open this from a Jira work item.' });
 
-  let binding: Binding;
-  try {
-    binding = parseBinding(json.value);
-  } catch {
-    return toGateStatus({
-      issueKey,
-      binding: null,
-      currentVersion: null,
-      error: 'Canon binding on this work item is malformed, so its state cannot be verified.',
-    });
-  }
-
-  const pageRes = await api.asApp().requestConfluence(route`/wiki/api/v2/pages/${binding.pageId}`);
-  if (!pageRes.ok) {
-    return toGateStatus({
-      issueKey,
-      binding,
-      currentVersion: null,
-      error: `Canon could not read the Confluence page (HTTP ${pageRes.status}). Try again later.`,
-    });
-  }
-  const page = (await pageRes.json()) as { version?: { number?: unknown } };
-  const v = page.version?.number;
-  const currentVersion = typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null;
-
-  return toGateStatus({ issueKey, binding, currentVersion });
+function deps(): RovoDeps {
+  return {
+    repos: createAppRepos(),
+    getPageMeta,
+    fetchBody,
+    canView: canUserView,
+    now: () => new Date().toISOString(),
+  };
 }
 
-/**
- * Rovo action: is the current Jira work item bound to a Confluence procedure version,
- * and has that procedure been revised since? Read-only. Never throws.
- */
-export async function getGateStatus(
-  payload: unknown,
-  context?: unknown,
-): Promise<GateStatusOk | { ok: false; message: string }> {
-  void context; // unused: the issue key comes only from the Jira context in payload
+async function run<T extends object>(payload: unknown, fn: (issueKey: string) => Promise<T>): Promise<T | Failure> {
   const issueKey = extractIssueKey(payload);
-  if (issueKey === null) {
-    return { ok: false, message: 'Open this from a Jira work item.' };
-  }
+  if (issueKey === null) return noContext();
   try {
-    return await lookup(issueKey);
-  } catch {
-    return toGateStatus({
-      issueKey,
-      binding: null,
-      currentVersion: null,
-      error: 'Canon could not verify the procedure version right now. Try again later.',
-    });
+    return await fn(issueKey);
+  } catch (e) {
+    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
   }
+}
+
+export function getGateStatus(payload: unknown, context?: unknown): Promise<object> {
+  void context; // the acting user is applied by canUserView (asUser)
+  return run(payload, (key) => rovoGateStatus(key, deps()));
+}
+
+export function explainDelta(payload: unknown, context?: unknown): Promise<object> {
+  void context;
+  return run(payload, (key) => rovoExplainDelta(key, deps()));
+}
+
+export function getApprovedProcedure(payload: unknown, context?: unknown): Promise<object> {
+  void context;
+  const raw = (payload as { version?: unknown } | null | undefined)?.version;
+  const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  if (n !== undefined && n !== null && !(typeof n === 'number' && Number.isInteger(n) && n > 0)) {
+    return Promise.resolve<Failure>({ ok: false, error: 'INVALID_INPUT', message: 'version must be a positive integer.' });
+  }
+  const version = typeof n === 'number' ? n : undefined;
+  return run(payload, (key) => rovoApprovedProcedure(key, version, deps()));
 }

@@ -26,6 +26,10 @@ modules:
       handler: index.canonGate
     - key: rovo-get-gate-status
       handler: index.getGateStatus
+    - key: rovo-explain-delta
+      handler: index.explainDelta
+    - key: rovo-get-approved-procedure
+      handler: index.getApprovedProcedure
     - key: canon-reconcile-fn
       handler: index.runReconcile
   scheduledTrigger:
@@ -37,13 +41,35 @@ modules:
       name: Get Canon gate status
       function: rovo-get-gate-status
       actionVerb: GET
-      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (CURRENT, SUPERSEDED, NO_BINDING or UNVERIFIED).
+      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (overall NO_BINDING, CLEAR, BLOCKED, WARN_ONLY or UNVERIFIED, with per-binding detail).
       inputs:
         note:
           title: Note
           type: string
           required: false
           description: Optional free text; ignored
+    - key: canon-explain-delta
+      name: Explain Canon delta
+      function: rovo-explain-delta
+      actionVerb: GET
+      description: Lists what changed in the bound procedure since this work item was bound, with before/after text.
+      inputs:
+        note:
+          title: Note
+          type: string
+          required: false
+          description: Optional free text; ignored
+    - key: canon-get-approved-procedure
+      name: Get approved procedure
+      function: rovo-get-approved-procedure
+      actionVerb: GET
+      description: Returns the text of the current approved version of the bound procedure. Never returns draft text.
+      inputs:
+        version:
+          title: Version
+          type: integer
+          required: false
+          description: Optional version number; omit for the current approved version
   rovo:agent:
     - key: canon-agent
       name: Canon Procedure Guard
@@ -52,8 +78,11 @@ modules:
         You are the Canon Procedure Guard for regulated change work.
         When asked about a work item, always call canon-get-gate-status first.
         Explain the returned state in plain language:
-        - CURRENT: the work item is bound to the procedure version that is still current.
-        - SUPERSEDED: the procedure was revised after this work item was bound; say which versions.
+        - CLEAR: Done is not blocked.
+        - BLOCKED: a bound procedure was revised; say which versions. Use canon-explain-delta to describe the changes.
+        - WARN_ONLY: the gate is in warn mode; changes exist but do not block.
+        - Restricted bindings: say the procedure is restricted and reveal nothing about it.
+        - Use canon-get-approved-procedure only for the current approved text.
         - NO_BINDING: the work item is not bound to a Confluence procedure.
         - UNVERIFIED: Canon could not check right now; say so and do not guess.
         Never claim a step is done or complete.
@@ -64,6 +93,8 @@ modules:
         - Which procedure version is this work bound to?
       actions:
         - canon-get-gate-status
+        - canon-explain-delta
+        - canon-get-approved-procedure
   jira:workflowValidator:
     - key: canon-gate
       name: Canon gate

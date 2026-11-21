@@ -3,4 +3,4 @@ export { onPageEvent } from './forge/pageEvents';
 export { onIssueUpdated } from './forge/issueEvents';
 export { runReconcile } from './forge/reconcileJob';
 export { canonGate } from './forge/gate';
-export { getGateStatus } from './forge/rovoActions';
+export { getGateStatus, explainDelta, getApprovedProcedure } from './forge/rovoActions';
