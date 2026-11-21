@@ -1,5 +1,5 @@
 // Jira issue panel for Canon.
-// Tabs: "Status" today; later items add Delta, Attest, Evidence as new
+// Tabs: "Status", "Delta", "Attest" today; later items add Evidence as new
 // Tab + TabPanel pairs, each rendered by its own component below.
 // Below the tabs, a "Bind procedure" section lets the user search for and
 // bind a controlled procedure to this issue.
@@ -24,7 +24,14 @@ import { invoke } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
-import type { BindingState, DeltaItem, DeltaKind } from '../domain/types';
+import type {
+  Attestation,
+  AttestationItem,
+  AttestItemStatus,
+  BindingState,
+  DeltaItem,
+  DeltaKind,
+} from '../domain/types';
 
 // ---- Typed backend response shapes (mirror src/forge/resolvers.ts) ----
 
@@ -200,6 +207,184 @@ const DeltaTab = ({ view }: { view: IssueView }) => {
   );
 };
 
+// ---- Attest tab ----
+
+type AttestResponse = { ok: true; attestation: Attestation | null } | Failure;
+
+type AttestLoadState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; attestation: Attestation | null; delta: BindingDeltaView };
+
+const LOZENGE_FOR_ITEM: Record<AttestItemStatus, { text: string; appearance: 'default' | 'success' | 'moved' }> = {
+  PENDING: { text: 'PENDING', appearance: 'default' },
+  DONE: { text: 'DONE', appearance: 'success' },
+  NOT_MATERIAL: { text: 'NOT_MATERIAL', appearance: 'moved' },
+};
+
+const AttestItemRow = ({
+  item,
+  deltaItem,
+  busy,
+  onAct,
+}: {
+  item: AttestationItem;
+  deltaItem: DeltaItem | undefined;
+  busy: boolean;
+  onAct: (itemId: string, action: 'DONE' | 'NOT_MATERIAL', note?: string) => void;
+}) => {
+  const [note, setNote] = useState('');
+  const lozenge = LOZENGE_FOR_ITEM[item.status];
+  return (
+    <Stack space="space.050">
+      <Inline space="space.100" alignBlock="center">
+        <Text>{deltaItem ? deltaItem.path.join(' › ') : item.itemId}</Text>
+        <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
+      </Inline>
+      {deltaItem && deltaItem.before !== null && <Text>{`Before: ${deltaItem.before}`}</Text>}
+      {deltaItem && deltaItem.after !== null && <Text>{`After: ${deltaItem.after}`}</Text>}
+      {item.status === 'PENDING' && (
+        <Stack space="space.050">
+          <Inline space="space.100" alignBlock="end">
+            <Button isDisabled={busy} onClick={() => onAct(item.itemId, 'DONE')}>
+              Done
+            </Button>
+          </Inline>
+          <Inline space="space.100" alignBlock="end">
+            <Textfield
+              name={`note-${item.itemId}`}
+              placeholder="Reason (why this is not material)"
+              value={note}
+              onChange={(e) => setNote(String(e.target.value ?? ''))}
+            />
+            <Button isDisabled={busy} onClick={() => onAct(item.itemId, 'NOT_MATERIAL', note)}>
+              Not material
+            </Button>
+          </Inline>
+        </Stack>
+      )}
+    </Stack>
+  );
+};
+
+const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged: () => Promise<void> }) => {
+  const [data, setData] = useState<AttestLoadState>({ kind: 'loading' });
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const attRes = (await invoke('canonAttestation', { bindingId })) as AttestResponse;
+      const deltaRes = (await invoke('canonBindingDelta', { bindingId })) as DeltaResponse;
+      if (!attRes.ok) {
+        setData({ kind: 'error', message: attRes.message });
+      } else if (!deltaRes.ok) {
+        setData({ kind: 'error', message: deltaRes.message });
+      } else {
+        setData({ kind: 'ready', attestation: attRes.attestation, delta: deltaRes.delta });
+      }
+    } catch (e) {
+      setData({ kind: 'error', message: e instanceof Error ? e.message : 'Could not load attestation.' });
+    }
+  }, [bindingId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const mutate = async (
+    name: 'canonAttestStart' | 'canonAttestItem' | 'canonAttestSign',
+    payload: Record<string, unknown>,
+  ): Promise<void> => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = (await invoke(name, { bindingId, ...payload })) as AttestResponse;
+      // Reload even on refusal: the server state may have moved on.
+      await load();
+      if (res.ok) {
+        await onChanged();
+      } else {
+        setActionError(res.message);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Request failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (data.kind === 'loading') return <Spinner />;
+  if (data.kind === 'error') {
+    return (
+      <SectionMessage appearance="error">
+        <Text>{data.message}</Text>
+      </SectionMessage>
+    );
+  }
+
+  const { attestation, delta } = data;
+  const allResolved = attestation !== null && attestation.items.every((i) => i.status !== 'PENDING');
+
+  return (
+    <Stack space="space.100">
+      <Heading as="h4">{delta.title || delta.pageId}</Heading>
+      {actionError !== null && (
+        <SectionMessage appearance="error">
+          <Text>{actionError}</Text>
+        </SectionMessage>
+      )}
+      {attestation === null ? (
+        <Button appearance="primary" isDisabled={busy} onClick={() => void mutate('canonAttestStart', {})}>
+          Start re-attestation
+        </Button>
+      ) : (
+        <Stack space="space.100">
+          <Text>{`Re-attesting against v${attestation.toVersion}`}</Text>
+          <Text>{`Implementer: ${attestation.implementer}`}</Text>
+          {attestation.items.map((item) => (
+            <AttestItemRow
+              key={item.itemId}
+              item={item}
+              deltaItem={delta.items.find((d) => d.itemId === item.itemId)}
+              busy={busy}
+              onAct={(itemId, action, note) =>
+                void mutate('canonAttestItem', { itemId, action, note: action === 'NOT_MATERIAL' ? note : undefined })
+              }
+            />
+          ))}
+          {attestation.sealHash !== undefined ? (
+            <SectionMessage appearance="success">
+              <Text>{`Signed off; seal ${attestation.sealHash.slice(0, 12)}`}</Text>
+            </SectionMessage>
+          ) : (
+            allResolved && (
+              <Button appearance="primary" isDisabled={busy} onClick={() => void mutate('canonAttestSign', {})}>
+                Sign off as checker
+              </Button>
+            )
+          )}
+        </Stack>
+      )}
+    </Stack>
+  );
+};
+
+const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Promise<void> }) => {
+  // Restricted bindings are skipped; the server would refuse them anyway.
+  const needing = view.bindings.filter(
+    (b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'),
+  );
+  if (needing.length === 0) return <Text>Nothing to re-attest.</Text>;
+  return (
+    <Stack space="space.300">
+      {needing.map((b) => (
+        <BindingAttest key={b.id} bindingId={b.id} onChanged={onChanged} />
+      ))}
+    </Stack>
+  );
+};
+
 // ---- Bind section (below the tabs) ----
 
 type BindSectionProps = { onBound: () => Promise<void> };
@@ -303,12 +488,16 @@ const App = () => {
           <TabList>
             <Tab>Status</Tab>
             <Tab>Delta</Tab>
+            <Tab>Attest</Tab>
           </TabList>
           <TabPanel>
             <StatusTab view={state.view} />
           </TabPanel>
           <TabPanel>
             <DeltaTab view={state.view} />
+          </TabPanel>
+          <TabPanel>
+            <AttestTab view={state.view} onChanged={loadView} />
           </TabPanel>
         </Tabs>
       )}
