@@ -1,15 +1,30 @@
 // Forge adapter: permission checks shared by resolvers.
 import api, { route } from '@forge/api';
+import { isAdminFromMyPermissions } from './invocationContext';
 
+/**
+ * Whether the calling user administers the project: ADMINISTER_PROJECTS on it (granted by the
+ * project's permission scheme, usually the Administrators role) or Jira admin (ADMINISTER). In Jira
+ * Cloud a Jira admin does NOT implicitly hold ADMINISTER_PROJECTS, so both are checked. Fails closed.
+ */
 export async function isProjectAdmin(projectKey: string): Promise<boolean> {
-  const res = await api
-    .asUser()
-    .requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=ADMINISTER_PROJECTS`, {
-      headers: { Accept: 'application/json' },
-    });
-  if (!res.ok) return false;
-  const j = (await res.json()) as { permissions?: { ADMINISTER_PROJECTS?: { havePermission?: unknown } } };
-  return j.permissions?.ADMINISTER_PROJECTS?.havePermission === true;
+  try {
+    const res = await api
+      .asUser()
+      .requestJira(
+        route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=ADMINISTER_PROJECTS,ADMINISTER`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+      );
+    if (!res.ok) {
+      console.warn(JSON.stringify({ tag: 'canon-permission-check', check: 'project-admin', status: res.status }));
+      return false;
+    }
+    return isAdminFromMyPermissions(await res.json());
+  } catch {
+    return false;
+  }
 }
 
 /** Whether the current user can browse the project. Any failure is false. */
