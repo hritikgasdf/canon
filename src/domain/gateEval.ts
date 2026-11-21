@@ -26,6 +26,15 @@ export const GATE_FAIL_CLOSED =
 const isSealed = (a: Attestation): boolean =>
   !!a.checkerSignedAt && !!a.sealHash && a.items.every((i) => i.status === 'DONE' || i.status === 'NOT_MATERIAL');
 
+/** The version a binding must be re-attested to: highest approved (or live, for every-major). */
+export function effectiveTarget(_b: Binding, proc: Procedure, live: number): number {
+  // currentApproved null = nothing approved is known, so it cannot exceed the bound version.
+  let effective = proc.currentApproved ?? 0;
+  if (proc.policy === 'every-major') effective = Math.max(effective, live);
+  // approved-only with live > currentApproved is a draft pending approval: informational, never blocks.
+  return effective;
+}
+
 function evaluateBinding(
   b: Binding,
   input: GateInput,
@@ -41,10 +50,7 @@ function evaluateBinding(
   }
   if (proc === null || typeof live !== 'number') return { ...base, code: 'UNVERIFIED' };
 
-  // currentApproved null = nothing approved is known, so it cannot exceed the bound version.
-  let effective = proc.currentApproved ?? 0;
-  if (proc.policy === 'every-major') effective = Math.max(effective, live);
-  // approved-only with live > currentApproved is a draft pending approval: informational, never blocks.
+  const effective = effectiveTarget(b, proc, live);
 
   if (effective <= satisfiedAt) return null;
 
