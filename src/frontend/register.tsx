@@ -152,7 +152,7 @@ const RegisterView = ({ register }: { register: Register }) => {
           cells: [
             { key: 'issue', content: <Link href={`/browse/${r.issueKey}`}>{r.issueKey}</Link> },
             { key: 'procedure', content: procedureLabel(r) },
-            { key: 'bound', content: `v${r.boundVersion}` },
+            { key: 'bound', content: r.boundVersion !== undefined ? `v${r.boundVersion}` : '—' },
             { key: 'latest', content: r.currentApproved != null ? `v${r.currentApproved}` : '—' },
             {
               key: 'status',

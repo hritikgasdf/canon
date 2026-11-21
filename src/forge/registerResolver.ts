@@ -6,6 +6,7 @@ export type RegisterResolverDeps = {
   repos: Repos;
   canBrowseProject(projectKey: string): Promise<boolean>;
   canView(pageId: string): Promise<boolean>;
+  visibleIssues?(issueKeys: string[]): Promise<Set<string>>;
 };
 
 type Req = { context?: { extension?: { project?: { key?: string } } } };
@@ -32,11 +33,22 @@ async function guarded<T extends object>(
 
 export const registerHandler = (req: unknown, deps: RegisterResolverDeps) =>
   guarded(req, deps, async (projectKey) => ({
-    register: await buildRegister({ repos: deps.repos, canView: deps.canView }, { projectKey }),
+    register: await buildRegister(
+      { repos: deps.repos, canView: deps.canView, visibleIssues: deps.visibleIssues },
+      { projectKey },
+    ),
   }));
 
 export const registerVerifyHandler = (req: unknown, deps: RegisterResolverDeps) =>
   guarded(req, deps, async (projectKey) => {
-    const reg = await buildRegister({ repos: deps.repos, canView: deps.canView }, { projectKey });
-    return { verification: await verifyRegisterChains(deps.repos, reg.rows.map((r) => r.issueKey)) };
+    const reg = await buildRegister(
+      { repos: deps.repos, canView: deps.canView, visibleIssues: deps.visibleIssues },
+      { projectKey },
+    );
+    return {
+      verification: await verifyRegisterChains(
+        deps.repos,
+        reg.rows.map((r) => r.issueKey),
+      ),
+    };
   });

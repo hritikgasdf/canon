@@ -43,6 +43,42 @@ async function seed(procs: Procedure[], bs: Binding[]) {
 const all = async () => true;
 
 describe('buildRegister', () => {
+  it('restricted rows leak no page id, versions or live-derived status', async () => {
+    // Stored CURRENT at v3, page approved v5: a visible row would read SUPERSEDED.
+    const repos = await seed(
+      [proc('1', { currentApproved: 5 })],
+      [bind('CHG-1.1', 'CHG-1', '1', 'CURRENT', { boundVersion: 3 })],
+    );
+    const row = (await buildRegister({ repos, canView: async () => false }, { projectKey: 'CHG' })).rows[0];
+    expect(row.status).toBe('CURRENT');
+    expect(row.pageId).toBe('');
+    expect(row.bindingId).not.toContain('1.1');
+    expect(row).not.toHaveProperty('boundVersion');
+    expect(row).not.toHaveProperty('currentApproved');
+    expect(row).not.toHaveProperty('supersededBy');
+    expect(row).not.toHaveProperty('title');
+  });
+
+  it('drops work items the viewer cannot browse (issue security); an error hides all', async () => {
+    const repos = await seed([proc('1', { currentApproved: 3 })], [bind('a', 'CHG-1', '1'), bind('b', 'CHG-2', '1')]);
+    const r = await buildRegister(
+      { repos, canView: all, visibleIssues: async () => new Set(['CHG-2']) },
+      { projectKey: 'CHG' },
+    );
+    expect(r.rows.map((x) => x.issueKey)).toEqual(['CHG-2']);
+    const r2 = await buildRegister(
+      {
+        repos,
+        canView: all,
+        visibleIssues: async () => {
+          throw new Error('x');
+        },
+      },
+      { projectKey: 'CHG' },
+    );
+    expect(r2.rows).toEqual([]);
+  });
+
   it('reports an open CURRENT binding behind the latest approved version as SUPERSEDED', async () => {
     const repos = await seed(
       [proc('1', { currentApproved: 5 })],
@@ -84,7 +120,10 @@ describe('buildRegister', () => {
   });
 
   it('shows details for visible rows', async () => {
-    const repos = await seed([proc('1', { currentApproved: 4 })], [bind('a', 'CHG-1', '1', 'SUPERSEDED', { supersededBy: 4 })]);
+    const repos = await seed(
+      [proc('1', { currentApproved: 4 })],
+      [bind('a', 'CHG-1', '1', 'SUPERSEDED', { supersededBy: 4 })],
+    );
     const row = (await buildRegister({ repos, canView: all }, { projectKey: 'CHG' })).rows[0];
     expect(row).toMatchObject({
       restricted: false,
@@ -173,6 +212,17 @@ describe('buildRegister', () => {
     const override = { by: 'bob', at: NOW, reason: 'r', forVersion: 4 };
     const repos = await seed([proc('1')], [bind('a', 'CHG-1', '1', 'SUPERSEDED', { override })]);
     expect((await buildRegister({ repos, canView: all }, { projectKey: 'CHG' })).rows[0].overridden).toBe(true);
+  });
+});
+
+describe('verifyRegisterChains truncation', () => {
+  it('never reports a truncated run as a full pass', async () => {
+    const repos = createMemoryRepos();
+    const keys = Array.from({ length: 201 }, (_, i) => `CHG-${i + 1}`);
+    const r = await verifyRegisterChains(repos, keys);
+    expect(r.truncated).toBe(true);
+    expect(r.allOk).toBe(false);
+    expect(r.checked).toBe(200);
   });
 });
 

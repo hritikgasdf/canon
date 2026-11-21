@@ -10,7 +10,8 @@ export interface RegisterRow {
   issueKey: string;
   pageId: string;
   status: RegisterStatus;
-  boundVersion: number;
+  /** Omitted for restricted rows. */
+  boundVersion?: number;
   supersededBy?: number;
   currentApproved?: number | null;
   title?: string;
@@ -29,6 +30,8 @@ export interface Register {
 export interface RegisterDeps {
   repos: Repos;
   canView(pageId: string): Promise<boolean>;
+  /** Optional issue-level visibility filter (issue security). Returns the keys the viewer can browse. */
+  visibleIssues?(issueKeys: string[]): Promise<Set<string>>;
 }
 
 const ORDER: RegisterStatus[] = ['SUPERSEDED', 'REATTESTING', 'ORPHANED', 'CURRENT', 'CLEARED', 'CLOSED'];
@@ -61,7 +64,13 @@ export async function buildRegister(deps: RegisterDeps, { projectKey }: { projec
   const prefix = `${projectKey}-`;
   const byId = new Map<string, Binding>();
   for (const b of lists.flat()) if (b.issueKey.startsWith(prefix)) byId.set(b.id, b);
-  const bindings = [...byId.values()];
+  let bindings = [...byId.values()];
+  if (deps.visibleIssues) {
+    // Issue-level security: drop rows for work items the viewer can't browse. Any error hides all.
+    const keys = [...new Set(bindings.map((b) => b.issueKey))];
+    const ok = await deps.visibleIssues(keys).catch(() => new Set<string>());
+    bindings = bindings.filter((b) => ok.has(b.issueKey));
+  }
 
   const pages = [...new Set(bindings.map((b) => b.pageId))];
   const visible = new Map(
@@ -69,21 +78,27 @@ export async function buildRegister(deps: RegisterDeps, { projectKey }: { projec
   );
   const procs = new Map(await Promise.all(pages.map(async (id) => [id, await repos.procedures.get(id)] as const)));
 
+  let restrictedSeq = 0;
   const rows: RegisterRow[] = bindings.map((b) => {
     const row: RegisterRow = {
       bindingId: b.id,
       issueKey: b.issueKey,
       pageId: b.pageId,
-      status: effectiveStatus(b, procs.get(b.pageId) ?? null),
-      boundVersion: b.boundVersion,
+      status: statusOf(b),
       restricted: visible.get(b.pageId) !== true,
       overridden: b.override !== undefined,
       boundAt: b.boundAt,
     };
     if (b.closedAt) row.closedAt = b.closedAt;
     // Fail closed: a restricted row carries nothing derived from the page.
-    if (!row.restricted) {
+    if (row.restricted) {
+      // No page id, versions or live-derived status for a page the viewer can't see.
+      row.bindingId = `restricted:${b.issueKey}:${restrictedSeq++}`;
+      row.pageId = '';
+    } else {
       const p = procs.get(b.pageId);
+      row.status = effectiveStatus(b, p ?? null);
+      row.boundVersion = b.boundVersion;
       if (b.supersededBy !== undefined) row.supersededBy = b.supersededBy;
       row.currentApproved = p?.currentApproved ?? null;
       if (p) row.title = p.title;
@@ -113,8 +128,9 @@ export interface ChainCheck {
 export async function verifyRegisterChains(
   repos: Repos,
   issueKeys: string[],
-): Promise<{ results: ChainCheck[]; allOk: boolean; checked: number }> {
-  const keys = [...new Set(issueKeys)].slice(0, VERIFY_ISSUE_CAP);
+): Promise<{ results: ChainCheck[]; allOk: boolean; checked: number; truncated: boolean }> {
+  const distinct = [...new Set(issueKeys)];
+  const keys = distinct.slice(0, VERIFY_ISSUE_CAP);
   const results: ChainCheck[] = [];
   for (let i = 0; i < keys.length; i += VERIFY_BATCH) {
     const batch = await Promise.all(
@@ -135,7 +151,9 @@ export async function verifyRegisterChains(
   }
   return {
     results,
-    allOk: results.every((r) => r.ok),
+    // A truncated run is never reported as a full pass.
+    allOk: distinct.length <= VERIFY_ISSUE_CAP && results.every((r) => r.ok),
     checked: results.length,
+    truncated: distinct.length > VERIFY_ISSUE_CAP,
   };
 }

@@ -61,3 +61,27 @@ export async function canUserBrowseIssue(accountId: string, issueKey: string): P
     return false;
   }
 }
+
+/**
+ * The subset of `issueKeys` the current user can browse (issue security aware): GET each issue as
+ * the user, 10 at a time. Any non-200 or error hides that issue.
+ */
+export async function visibleIssues(issueKeys: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const keys = issueKeys.filter((k) => /^[A-Z][A-Z0-9_]+-[0-9]+$/.test(k));
+  for (let i = 0; i < keys.length; i += 10) {
+    await Promise.all(
+      keys.slice(i, i + 10).map(async (key) => {
+        try {
+          const res = await api
+            .asUser()
+            .requestJira(route`/rest/api/3/issue/${key}?fields=none`, { headers: { Accept: 'application/json' } });
+          if (res.ok) out.add(key);
+        } catch {
+          // hidden
+        }
+      }),
+    );
+  }
+  return out;
+}
