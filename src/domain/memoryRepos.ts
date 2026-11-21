@@ -44,7 +44,7 @@ export function createMemoryRepos(): Repos {
     async listWithOpenBindings() {
       const pageIds = new Set<string>();
       for (const b of bindings.values()) {
-        if (OPEN_STATES.includes(b.state)) pageIds.add(b.pageId);
+        if (b.closedAt === undefined && OPEN_STATES.includes(b.state)) pageIds.add(b.pageId);
       }
       return [...pageIds];
     },

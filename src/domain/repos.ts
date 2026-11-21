@@ -15,7 +15,7 @@ export const CONTROLLED_LIST_CAP = 200;
 export interface ProcedureRepo {
   get(pageId: string): Promise<Procedure | null>;
   put(p: Procedure): Promise<void>;
-  /** pageIds that have at least one binding in CURRENT, SUPERSEDED or REATTESTING. */
+  /** pageIds that have at least one non-closed (no closedAt) binding in CURRENT, SUPERSEDED or REATTESTING. */
   listWithOpenBindings(): Promise<string[]>;
   /** Procedures with controlled === true, at most CONTROLLED_LIST_CAP. */
   listControlled(): Promise<Procedure[]>;

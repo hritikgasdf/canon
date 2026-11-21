@@ -68,7 +68,7 @@ export async function supersede(
 ): Promise<SupersedeResult> {
   const { pageId, toVersion, actor, at, isIssueOpen } = input;
   const result: SupersedeResult = { pageId, toVersion, deltaCreated: false, superseded: [], skipped: [] };
-  const bindings = await repos.bindings.listByPage(pageId, STATES);
+  const bindings = (await repos.bindings.listByPage(pageId, STATES)).filter((b) => b.closedAt === undefined);
 
   for (const b of bindings) {
     const satisfiedAt = b.state === 'CLEARED' ? (b.supersededBy ?? b.boundVersion) : b.boundVersion;

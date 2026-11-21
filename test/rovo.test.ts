@@ -69,6 +69,16 @@ async function superseded(canView = true) {
   return s;
 }
 
+describe('rovoGateStatus closed binding', () => {
+  it('reports state CLOSED for a binding with closedAt', async () => {
+    const { repos, deps } = setup(3);
+    await repos.procedures.put(procedure());
+    await repos.bindings.put(binding({ closedAt: NOW }));
+    const r = await rovoGateStatus('PAY-1', deps);
+    expect(r.bindings?.[0]).toMatchObject({ bindingId: 'b1', state: 'CLOSED', boundVersion: 3 });
+  });
+});
+
 describe('rovoGateStatus', () => {
   it('NO_BINDING when nothing is bound', async () => {
     const { deps } = setup(3);

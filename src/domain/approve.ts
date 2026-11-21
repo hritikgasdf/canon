@@ -102,7 +102,7 @@ export async function procedureState(
   pageId: string,
 ): Promise<{ procedure: Procedure | null; openBindings: number; pendingDraft: boolean }> {
   const procedure = await repos.procedures.get(pageId);
-  const open = await repos.bindings.listByPage(pageId, OPEN_STATES);
+  const open = (await repos.bindings.listByPage(pageId, OPEN_STATES)).filter((b) => b.closedAt === undefined);
   const pendingDraft =
     procedure !== null && procedure.lastSeenVersion !== null && procedure.lastSeenVersion > (procedure.currentApproved ?? 0);
   return { procedure, openBindings: open.length, pendingDraft };

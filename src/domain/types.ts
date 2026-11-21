@@ -49,6 +49,8 @@ export interface Binding {
   state: BindingState;
   supersededBy?: number;
   clearedAt?: string;
+  /** Set when the Jira issue reached Done; closed bindings are never superseded or counted as open. */
+  closedAt?: string;
   override?: { by: string; at: string; reason: string; forVersion: number | null; priorState?: BindingState };
 }
 

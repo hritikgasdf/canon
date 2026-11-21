@@ -61,6 +61,25 @@ function setup(metas: Record<string, PageMeta | Error>): { repos: Repos; deps: G
   };
 }
 
+describe('runCanonGate with a closed binding', () => {
+  it('allows when no newer approved version exists', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(3) });
+    await repos.procedures.put(procedure());
+    await repos.bindings.put({ ...binding('b1'), closedAt: NOW });
+    expect((await runCanonGate('PAY-1', deps)).allow).toBe(true);
+  });
+
+  it('blocks on a newer approved version without ever marking the binding superseded', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(4) });
+    await repos.procedures.put(procedure(PAGE, { currentApproved: 4, lastSeenVersion: 4 }));
+    await repos.bindings.put({ ...binding('b1'), closedAt: NOW });
+    const d = await runCanonGate('PAY-1', deps);
+    expect(d.allow).toBe(false);
+    expect(d.reasons[0]).toMatchObject({ code: 'SUPERSEDED', targetVersion: 4 });
+    expect((await repos.bindings.get('b1'))?.state).toBe('CURRENT');
+  });
+});
+
 describe('runCanonGate', () => {
   it('allows with no bindings', async () => {
     const { deps } = setup({});
