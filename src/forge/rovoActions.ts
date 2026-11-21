@@ -88,6 +88,16 @@ const extractActor = actorFromContext;
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
+/** A plain completion message so the agent reports success instead of re-proposing the action. */
+function withDoneMessage(r: object): object {
+  const o = r as { ok?: unknown; items?: unknown[] };
+  if (o.ok !== true || !Array.isArray(o.items)) return r;
+  return {
+    ...r,
+    message: `Checklist saved with ${o.items.length} item(s). It is in the Canon panel's Attest tab. This action is complete; do not call it again for these items. People mark items done and sign off in the panel.`,
+  };
+}
+
 function logOutcome(action: string, r: object): object {
   const o = r as { ok?: unknown; error?: unknown; status?: unknown };
   console.log(JSON.stringify({ tag: 'canon-rovo-write', action, ok: o.ok === true, error: o.error, status: o.status }));
@@ -105,7 +115,7 @@ export function createReattestChecklist(payload: unknown, context?: unknown): Pr
       { bindingId: str(p.bindingId), itemIdsJson: p.itemIdsJson, tasksJson: p.tasksJson },
       writeDeps(),
     ),
-  ).then((r) => logOutcome('checklist', r));
+  ).then((r) => logOutcome('checklist', withDoneMessage(r)));
 }
 
 export function assignChecker(payload: unknown, context?: unknown): Promise<object> {
