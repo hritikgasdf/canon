@@ -19,7 +19,7 @@ Follow these steps in order. Stop and ask when a step needs the user's decision.
    - `tasksJson`: JSON array of the task texts, same order.
    - `bindingId`: pass it if the work item has more than one binding.
    If it returns `UNKNOWN_ITEM`, re-run step 2 and retry once with the exact ids. Tell the user they are now the implementer for this re-attestation.
-5. **Checker.** Suggest that someone other than the implementer checks the work. If the user names a person and gives their account, call `canon-assign-checker`. On `SELF_REVIEW` explain that the implementer can't check their own work; on `CHECKER_NO_ACCESS` explain that person can't see this work item.
+5. **Checker.** Suggest that someone other than the implementer checks the work. If the user names a person and gives their account, confirm with the user first, then call `canon-assign-checker`. On `SELF_REVIEW` explain that the implementer can't check their own work; on `CHECKER_NO_ACCESS` explain that person can't see this work item.
 6. **Hand-off.** Tell the user to complete each item in the Canon panel's Attest tab, and that the checker signs off there. You never mark items done or sign.
 
 ## Examples
