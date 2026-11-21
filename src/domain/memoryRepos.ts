@@ -8,6 +8,7 @@ import {
   type AuditRepo,
   type SettingsRepo,
   type SampleStateRepo,
+  type GateHeartbeatRepo,
   type Repos,
 } from './repos';
 import {
@@ -17,6 +18,7 @@ import {
   type Binding,
   type BindingState,
   type Delta,
+  type GateHeartbeat,
   type Procedure,
   type SampleState,
   type Settings,
@@ -144,6 +146,16 @@ export function createMemoryRepos(): Repos {
     },
   };
 
+  let heartbeat: GateHeartbeat | null = null;
+  const gateHeartbeatRepo: GateHeartbeatRepo = {
+    async get() {
+      return heartbeat === null ? null : structuredClone(heartbeat);
+    },
+    async put(h) {
+      heartbeat = structuredClone(h);
+    },
+  };
+
   return {
     procedures: procedureRepo,
     snapshots: snapshotRepo,
@@ -153,5 +165,6 @@ export function createMemoryRepos(): Repos {
     audit: auditRepo,
     settings: settingsRepo,
     sample: sampleRepo,
+    gateHeartbeat: gateHeartbeatRepo,
   };
 }

@@ -1,5 +1,7 @@
 import { GATE_FAIL_CLOSED, type GateDecision } from '../domain/gateEval';
 import { runCanonGate } from '../domain/gateRun';
+import type { GateHeartbeatRepo } from '../domain/repos';
+import type { GateHeartbeat } from '../domain/types';
 import { fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
 
@@ -10,7 +12,13 @@ export type GateDeps = {
   now(): number;
   log(line: string): void;
   timeoutMs?: number;
+  /** Best-effort setup heartbeat; throttled by the implementation. Never affects the outcome. */
+  heartbeat?(h: GateHeartbeat): Promise<void>;
 };
+
+/** Minimum gap between gate heartbeat writes. */
+export const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+const HEARTBEAT_TIMEOUT_MS = 1000;
 
 type Reason = 'no-binding' | 'allow' | 'block' | 'warn' | 'error';
 
@@ -74,12 +82,45 @@ export async function runGate(args: unknown, deps: GateDeps): Promise<GateResult
   } catch {
     // logging must never change the gate outcome
   }
+  if (deps.heartbeat) {
+    // Bounded: a slow or failing heartbeat can never change or noticeably delay the outcome.
+    let hbTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const beat = deps.heartbeat({ at: new Date(deps.now()).toISOString(), issueKey, outcome: reason });
+      await Promise.race([
+        beat,
+        new Promise<void>((resolve) => {
+          hbTimer = setTimeout(resolve, HEARTBEAT_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      // heartbeat is best effort
+    } finally {
+      if (hbTimer !== undefined) clearTimeout(hbTimer);
+    }
+  }
   return outcome;
+}
+
+/** Throttled heartbeat writer: skips when the stored heartbeat is under 10 minutes old. */
+export function createThrottledHeartbeat(
+  repo: GateHeartbeatRepo,
+  now: () => number,
+): (h: GateHeartbeat) => Promise<void> {
+  return async (h) => {
+    const prev = await repo.get();
+    if (prev !== null) {
+      const age = now() - Date.parse(prev.at);
+      if (Number.isFinite(age) && age >= 0 && age < HEARTBEAT_INTERVAL_MS) return;
+    }
+    await repo.put(h);
+  };
 }
 
 export async function canonGate(args: unknown): Promise<GateResult> {
   const repos = createAppRepos();
   return runGate(args, {
+    heartbeat: createThrottledHeartbeat(repos.gateHeartbeat, () => Date.now()),
     gate: (issueKey) =>
       runCanonGate(issueKey, { repos, getPageMeta, fetchBody, now: () => new Date().toISOString() }),
     now: () => Date.now(),

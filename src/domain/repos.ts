@@ -5,6 +5,7 @@ import type {
   BindingState,
   Delta,
   Procedure,
+  GateHeartbeat,
   SampleState,
   Settings,
   Snapshot,
@@ -61,6 +62,11 @@ export interface SampleStateRepo {
   put(s: SampleState): Promise<void>;
 }
 
+export interface GateHeartbeatRepo {
+  get(): Promise<GateHeartbeat | null>;
+  put(h: GateHeartbeat): Promise<void>;
+}
+
 export interface Repos {
   procedures: ProcedureRepo;
   snapshots: SnapshotRepo;
@@ -70,4 +76,5 @@ export interface Repos {
   audit: AuditRepo;
   settings: SettingsRepo;
   sample: SampleStateRepo;
+  gateHeartbeat: GateHeartbeatRepo;
 }

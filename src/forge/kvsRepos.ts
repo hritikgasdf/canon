@@ -7,6 +7,7 @@ import {
   type AuditRepo,
   type BindingRepo,
   type DeltaRepo,
+  type GateHeartbeatRepo,
   type ProcedureRepo,
   type Repos,
   type SampleStateRepo,
@@ -20,6 +21,7 @@ import {
   type Binding,
   type BindingState,
   type Delta,
+  type GateHeartbeat,
   type Procedure,
   type SampleState,
   type Settings,
@@ -240,6 +242,17 @@ function createSampleRepo(store: KvsStoreLike): SampleStateRepo {
   };
 }
 
+function createGateHeartbeatRepo(store: KvsStoreLike): GateHeartbeatRepo {
+  return {
+    async get() {
+      return (await store.get<GateHeartbeat>('gatehb')) ?? null;
+    },
+    async put(h) {
+      await store.set('gatehb', h);
+    },
+  };
+}
+
 /**
  * Forge KVS-backed implementation of the domain repos. Uses only plain key/value
  * reads, writes and key-prefix queries; no Custom Entities.
@@ -255,6 +268,7 @@ export function createKvsRepos(store: KvsStoreLike = kvs): Repos {
     audit: createAuditRepo(store),
     settings: createSettingsRepo(store),
     sample: createSampleRepo(store),
+    gateHeartbeat: createGateHeartbeatRepo(store),
   };
 }
 
