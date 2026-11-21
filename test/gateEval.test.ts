@@ -210,7 +210,7 @@ describe('evaluateGate (full)', () => {
 
   it('SUPERSEDED message without count', () => {
     const d = evaluateGate(input({ procedures: { '1': proc({ currentApproved: 4 }) }, liveVersions: { '1': 4 } }));
-    expect(d.message).toContain('"SOP-PAY-014" was revised v3 → v4 while CHG-41 was open.');
+    expect(d.message).toContain('the bound procedure was revised v3 → v4 while CHG-41 was open.');
     expect(d.reasons[0]).toMatchObject({ targetVersion: 4, boundVersion: 3 });
   });
 
@@ -234,14 +234,19 @@ describe('evaluateGate (full)', () => {
     );
     expect(d.reasons[0]?.openItems).toBe(3);
     expect(d.message).toBe(
-      'Canon: "SOP-PAY-014" was revised v3 → v4 while CHG-41 was open. 3 changes need re-attestation in the Canon panel.',
+      'Canon: the bound procedure was revised v3 → v4 while CHG-41 was open. 3 changes need re-attestation in the Canon panel.',
     );
   });
 
-  it('ORPHANED message falls back to page id', () => {
+  it('messages never contain the procedure title', () => {
+    const d = evaluateGate(input({ procedures: { '1': proc({ currentApproved: 4 }) }, liveVersions: { '1': 4 } }));
+    expect(d.message).not.toContain('SOP-PAY-014');
+  });
+
+  it('ORPHANED message is generic', () => {
     const d = evaluateGate(input({ procedures: { '1': null }, liveVersions: { '1': 'NOT_FOUND' } }));
     expect(d.message).toBe(
-      'Canon: the bound procedure "page 1" was deleted, archived or is no longer visible to Canon.',
+      'Canon: a bound procedure was deleted, archived or is no longer visible to Canon.',
     );
   });
 
