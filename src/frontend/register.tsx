@@ -2,6 +2,7 @@
 // Resolvers are project-scoped and permission-aware; restricted rows arrive without procedure details.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ForgeReconciler, {
+  Box,
   Button,
   DynamicTable,
   Heading,
@@ -15,6 +16,7 @@ import ForgeReconciler, {
   Stack,
   Text,
   Textfield,
+  xcss,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import type { ChainCheck, Register, RegisterRow, RegisterStatus } from '../domain/register';
@@ -27,6 +29,7 @@ type Option = { label: string; value: string };
 const GENERIC = 'Canon could not complete this request. Try again.';
 const RESTRICTED_TITLE = 'Procedure restricted'; // Hardcoded: RESTRICTED_LABEL lives in a module the UI bundle cannot import.
 const ALL = 'ALL';
+const filterBox = xcss({ width: '240px' });
 const STATUSES: RegisterStatus[] = ['SUPERSEDED', 'REATTESTING', 'ORPHANED', 'CURRENT', 'CLEARED', 'CLOSED'];
 const LOZENGE: Record<RegisterStatus, 'removed' | 'moved' | 'success' | 'default'> = {
   SUPERSEDED: 'removed',
@@ -111,30 +114,40 @@ const RegisterView = ({ register }: { register: Register }) => {
         ))}
       </Inline>
       <Inline space="space.200" alignBlock="end">
-        <Stack space="space.050">
-          <Label labelFor="canon-register-status">Status</Label>
-          <Select
-            inputId="canon-register-status"
-            options={STATUS_OPTIONS}
-            value={STATUS_OPTIONS.find((o) => o.value === statusFilter)}
-            onChange={(o: unknown) => setStatusFilter(pickValue(o))}
-          />
-        </Stack>
-        <Stack space="space.050">
-          <Label labelFor="canon-register-procedure">Procedure</Label>
-          <Select
-            inputId="canon-register-procedure"
-            options={procOptions}
-            value={procOptions.find((o) => o.value === procFilter)}
-            onChange={(o: unknown) => setProcFilter(pickValue(o))}
-          />
-        </Stack>
-        <Textfield
-          name="canon-register-key"
-          placeholder="Filter by work item key"
-          value={keyFilter}
-          onChange={(e) => setKeyFilter(String(e.target.value ?? ''))}
-        />
+        <Box xcss={filterBox}>
+          <Stack space="space.050">
+            <Label labelFor="canon-register-status">Status</Label>
+            <Select
+              inputId="canon-register-status"
+              options={STATUS_OPTIONS}
+              value={STATUS_OPTIONS.find((o) => o.value === statusFilter)}
+              onChange={(o: unknown) => setStatusFilter(pickValue(o))}
+            />
+          </Stack>
+        </Box>
+        <Box xcss={filterBox}>
+          <Stack space="space.050">
+            <Label labelFor="canon-register-procedure">Procedure</Label>
+            <Select
+              inputId="canon-register-procedure"
+              options={procOptions}
+              value={procOptions.find((o) => o.value === procFilter)}
+              onChange={(o: unknown) => setProcFilter(pickValue(o))}
+            />
+          </Stack>
+        </Box>
+        <Box xcss={filterBox}>
+          <Stack space="space.050">
+            <Label labelFor="canon-register-key">Work item key</Label>
+            <Textfield
+              id="canon-register-key"
+              name="canon-register-key"
+              placeholder="Filter by work item key"
+              value={keyFilter}
+              onChange={(e) => setKeyFilter(String(e.target.value ?? ''))}
+            />
+          </Stack>
+        </Box>
       </Inline>
       <DynamicTable
         head={{

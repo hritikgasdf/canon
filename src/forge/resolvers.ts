@@ -140,11 +140,34 @@ resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps(
 resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
 resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
 
+const DISPLAY_NAME_CAP = 20;
+
+/** Best effort accountId → displayName as the app (per-id lookups, so route`` escapes each id). */
+async function displayNames(ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  await Promise.all(
+    ids.slice(0, DISPLAY_NAME_CAP).map(async (id) => {
+      try {
+        const res = await api.asApp().requestJira(route`/rest/api/3/user?accountId=${id}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) return;
+        const name = ((await res.json()) as { displayName?: unknown }).displayName;
+        if (typeof name === 'string' && name !== '') out[id] = name;
+      } catch {
+        // best effort
+      }
+    }),
+  );
+  return out;
+}
+
 const evidenceDeps = () => ({
   repos: createAppRepos(),
   canView: canUserView,
   upload: uploadAttachments,
   isProjectAdmin,
+  displayNames,
   now: () => new Date().toISOString(),
 });
 resolver.define('canonEvidence', (req) => evidenceHandler(req, evidenceDeps()));

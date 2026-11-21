@@ -181,6 +181,21 @@ describe('evidence resolvers', () => {
     expect(r.ok && r.pack.issueKey).toBe(K);
   });
 
+  it('fills actorNames, and a displayNames failure still returns ok', async () => {
+    const { d, repos } = await deps();
+    await appendAudit(repos.audit, { issueKey: K, type: 'T', actor: 'acct9', at: NOW, payload: {} });
+    const spy = vi.fn(async (ids: string[]) => Object.fromEntries(ids.map((i) => [i, 'Dana Lee'])));
+    d.displayNames = spy;
+    const r = await evidenceHandler({ context: ctx }, d);
+    expect(r.ok && r.pack.actorNames).toEqual({ u: 'Dana Lee', acct9: 'Dana Lee' });
+    expect(spy).toHaveBeenCalledWith(['u', 'acct9']);
+    d.displayNames = async () => {
+      throw new Error('jira down');
+    };
+    const r2 = await evidenceHandler({ context: ctx }, d);
+    expect(r2.ok && r2.pack.actorNames).toEqual({});
+  });
+
   it('attach uploads 2 files and writes the audit event', async () => {
     const { d, upload, repos } = await deps();
     const r = await evidenceAttachHandler({ context: ctx }, d);

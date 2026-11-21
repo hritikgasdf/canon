@@ -1,6 +1,7 @@
 // Handlers for canonEvidence / canonEvidenceAttach. No @forge/* imports: tests pass fakes.
 import { appendAudit } from '../domain/audit';
 import { buildEvidence, renderEvidenceHtml, type EvidencePack } from '../domain/evidence';
+import { actorIds } from '../domain/evidenceLabels';
 import type { Repos } from '../domain/repos';
 
 export interface EvidenceFile {
@@ -16,6 +17,18 @@ export interface EvidenceDeps {
   /** Attaches files to the issue as the app. Must throw on failure. */
   upload(issueKey: string, files: EvidenceFile[]): Promise<void>;
   now: () => string;
+  /** Best effort accountId → display name lookup. */
+  displayNames?(ids: string[]): Promise<Record<string, string>>;
+}
+
+async function fillNames(d: EvidenceDeps, pack: EvidencePack): Promise<void> {
+  try {
+    const ids = actorIds(pack.audit);
+    if (d.displayNames && ids.length > 0) pack.actorNames = (await d.displayNames(ids)) ?? {};
+    else pack.actorNames = {};
+  } catch {
+    pack.actorNames = {};
+  }
 }
 
 export type EvidenceResponse =
@@ -57,10 +70,9 @@ export async function evidenceHandler(req: unknown, d: EvidenceDeps): Promise<Ev
   const c = ctx(req);
   if (!c) return NO_CONTEXT;
   try {
-    return {
-      ok: true,
-      pack: await buildEvidence(d.repos, { issueKey: c.issueKey, now: d.now(), canView: d.canView, mode: 'viewer' }),
-    };
+    const pack = await buildEvidence(d.repos, { issueKey: c.issueKey, now: d.now(), canView: d.canView, mode: 'viewer' });
+    await fillNames(d, pack);
+    return { ok: true, pack };
   } catch (e) {
     return fail(e);
   }
@@ -74,6 +86,7 @@ export async function evidenceHandler(req: unknown, d: EvidenceDeps): Promise<Ev
 export async function attachEvidence(d: EvidenceDeps, p: { issueKey: string; actor: string }): Promise<string[]> {
   const at = d.now();
   const pack = await buildEvidence(d.repos, { issueKey: p.issueKey, now: at, canView: d.canView, mode: 'issueSafe' });
+  await fillNames(d, pack);
   const base = `canon-evidence-${p.issueKey}-${at.replace(/[^0-9A-Za-z]/g, '')}`;
   const files: EvidenceFile[] = [
     { name: `${base}.json`, type: 'application/json', content: JSON.stringify(pack, null, 2) },

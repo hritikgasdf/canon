@@ -27,6 +27,7 @@ import { needsReattestation } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
+import { eventLabel } from '../domain/evidenceLabels';
 import type {
   Attestation,
   AttestationItem,
@@ -566,7 +567,7 @@ const EvidenceTab = () => {
         <Heading as="h4">Audit timeline</Heading>
         {pack.audit.length === 0 && <Text>No audit events.</Text>}
         {pack.audit.map((ev) => (
-          <Text key={ev.seq}>{`#${ev.seq} ${ev.at} ${ev.type} by ${ev.actor}`}</Text>
+          <Text key={ev.seq}>{`#${ev.seq} ${ev.at} ${eventLabel(ev, pack.actorNames ?? {})}`}</Text>
         ))}
       </Stack>
 
