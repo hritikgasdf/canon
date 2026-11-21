@@ -49,6 +49,7 @@ export interface Binding {
   state: BindingState;
   supersededBy?: number;
   clearedAt?: string;
+  override?: { by: string; at: string; reason: string; forVersion: number | null; priorState?: BindingState };
 }
 
 export type DeltaKind = 'ADDED' | 'REMOVED' | 'CHANGED' | 'MOVED';

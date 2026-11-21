@@ -12,6 +12,7 @@ export interface IssueBindingView {
   title?: string;
   currentApproved?: number | null;
   latestDeltaKey?: { from: number; to: number } | null;
+  override?: { by: string; at: string; reason: string };
 }
 
 export interface IssueView {
@@ -58,6 +59,7 @@ export async function buildIssueView(
       latestDeltaKey: needsDelta ? { from: b.boundVersion, to: currentApproved } : null,
     };
     if (procedure) view.title = procedure.title;
+    if (b.override) view.override = { by: b.override.by, at: b.override.at, reason: b.override.reason };
     views.push(view);
   }
 
