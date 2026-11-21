@@ -129,6 +129,12 @@ modules:
       skills:
         - canon-reattest
       followUpPrompt: Suggest up to three short next questions about this work item's procedure status, the changes to re-attest, or who can check the work. Never suggest marking items done or signing off.
+  rovo:mcp:
+    - key: canon-mcp
+      name: Canon procedure tools
+      tools:
+        - canon-get-gate-status
+        - canon-get-approved-procedure
   rovo:skill:
     - key: canon-reattest
       source:

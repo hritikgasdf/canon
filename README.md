@@ -8,3 +8,6 @@ See **[docs/judges-setup.md](docs/judges-setup.md)**. Most important: **Canon mu
 ## Development
 `npm test` · `npm run typecheck` · `npm run lint` · `forge deploy -e development`.
 Development-only verification hooks are kept outside this repository; the manifest here is the production manifest.
+
+## Extra: Canon tools for customer-built agents
+Canon exposes two read-only tools through `rovo:mcp` ("Canon procedure tools"): `canon-get-gate-status` and `canon-get-approved-procedure`. Customers can add them to their own agents in Rovo Studio. Both use the same context-only auth as Canon's own agent.
