@@ -47,8 +47,10 @@ function ctx(req: unknown): { issueKey: string; actor: string; projectKey: strin
 }
 
 const NO_CONTEXT = { ok: false, error: 'NO_CONTEXT', message: 'Missing issue or user context.' } as const;
-const fail = (e: unknown) =>
-  ({ ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' }) as const;
+const fail = (e: unknown) => {
+  console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+  return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' } as const;
+};
 
 /** On-screen pack: viewer mode, per-user canView. */
 export async function evidenceHandler(req: unknown, d: EvidenceDeps): Promise<EvidenceResponse> {

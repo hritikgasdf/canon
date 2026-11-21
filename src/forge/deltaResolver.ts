@@ -55,6 +55,7 @@ export async function bindingDeltaHandler(req: unknown, deps: BindingDeltaDeps):
     if (e instanceof Error && e.message === 'NOT_FOUND') {
       return { ok: false, error: 'NOT_FOUND', message: 'No such binding on this issue.' };
     }
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 }

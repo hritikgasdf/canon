@@ -40,7 +40,8 @@ async function guarded<T extends object>(
     return { ok: true, ...(await run(pageId, actor)) };
   } catch (e) {
     if (e instanceof ApproveError) return { ok: false, error: e.code, message: e.message };
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 }
 
@@ -85,7 +86,8 @@ resolver.define('canonIssueView', async (req) => {
     const view = await buildIssueView(createAppRepos(), issueKey, { canView: canUserView });
     return { ok: true, view };
   } catch (e) {
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 });
 
@@ -118,7 +120,8 @@ resolver.define('canonListProcedures', async (req) => {
     }
     return { ok: true, procedures };
   } catch (e) {
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 });
 
@@ -178,7 +181,8 @@ resolver.define('canonBind', async (req) => {
     return { ok: true, binding };
   } catch (e) {
     if (e instanceof BindError) return { ok: false, error: e.code, message: e.message };
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 });
 

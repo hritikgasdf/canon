@@ -53,7 +53,8 @@ async function handle(req: unknown, deps: AttestDeps, run: Run): Promise<AttestR
     return { ok: true, attestation };
   } catch (e) {
     if (e instanceof AttestError) return { ok: false, error: e.code, message: e.message };
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 }
 

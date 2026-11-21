@@ -223,7 +223,8 @@ describe('evidence resolvers', () => {
     const { d, repos, upload } = await deps();
     d.repos = { ...repos, audit: { ...repos.audit, append: async () => Promise.reject(new Error('kvs down')) } };
     const r = await evidenceAttachHandler({ context: ctx }, d);
-    expect(r).toMatchObject({ ok: false, error: 'INTERNAL' });
+    expect(r).toMatchObject({ ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' });
+    expect(JSON.stringify(r)).not.toContain('kvs down');
     expect(upload).not.toHaveBeenCalled();
   });
 });
