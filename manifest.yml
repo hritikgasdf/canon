@@ -7,6 +7,13 @@ modules:
       render: native
       title: Canon
       icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  jira:adminPage:
+    - key: canon-admin
+      resource: admin
+      resolver:
+        function: resolver
+      render: native
+      title: Canon setup
   confluence:contentBylineItem:
     - key: canon-byline
       resource: byline
@@ -185,6 +192,8 @@ resources:
     path: src/frontend/index.tsx
   - key: byline
     path: src/frontend/byline.tsx
+  - key: admin
+    path: src/frontend/admin.tsx
 permissions:
   scopes:
     - read:page:confluence

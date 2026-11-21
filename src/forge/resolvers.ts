@@ -1,4 +1,15 @@
 import Resolver from '@forge/resolver';
+import api, { route } from '@forge/api';
+import {
+  loadSampleHandler,
+  publishV4Handler,
+  sampleStateHandler,
+  saveSettingsHandler,
+  setupChecksHandler,
+  settingsHandler,
+  type AdminDeps,
+} from './adminResolver';
+import { createSampleDeps } from './sampleDeps';
 import { breakGlassHandler } from './overrideResolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
@@ -6,7 +17,7 @@ import { buildIssueView } from '../domain/issueView';
 import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
 import { evidenceAttachHandler, evidenceHandler } from './evidenceResolver';
 import { uploadAttachments } from './attachments';
-import { isProjectAdmin } from './permissions';
+import { isJiraAdmin, isProjectAdmin } from './permissions';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
@@ -179,5 +190,38 @@ resolver.define('canonApprove', (req) =>
     return { procedure: r.procedure, supersede: r.supersede };
   }),
 );
+
+const adminDeps = (): AdminDeps => {
+  const repos = createAppRepos();
+  return {
+    isAdmin: isJiraAdmin,
+    repos,
+    sample: { ...createSampleDeps(), repos },
+    setup: {
+      repos,
+      now: () => new Date().toISOString(),
+      confluenceReachable: async () => {
+        const res = await api
+          .asApp()
+          .requestConfluence(route`/wiki/api/v2/spaces?limit=1`, { headers: { Accept: 'application/json' } });
+        return res.ok;
+      },
+      pageReadable: async (pageId) => {
+        try {
+          await getPageMeta(pageId);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    },
+  };
+};
+resolver.define('canonSetupChecks', (req) => setupChecksHandler(req, adminDeps()));
+resolver.define('canonSampleState', (req) => sampleStateHandler(req, adminDeps()));
+resolver.define('canonLoadSample', (req) => loadSampleHandler(req, adminDeps()));
+resolver.define('canonPublishV4', (req) => publishV4Handler(req, adminDeps()));
+resolver.define('canonSettings', (req) => settingsHandler(req, adminDeps()));
+resolver.define('canonSaveSettings', (req) => saveSettingsHandler(req, adminDeps()));
 
 export const handler = resolver.getDefinitions();

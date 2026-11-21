@@ -4,19 +4,20 @@ Canon runs entirely on Atlassian (Forge). It needs Jira (required) and Confluenc
 
 ## 1. Install
 1. Open the installation link and install Canon on your site for **Jira**, then add **Confluence** when prompted (both products on the same site).
-2. Approve the read-only scopes: `read:page:confluence`, `read:confluence-content.summary`, `read:jira-work`, `storage:app`.
+2. Approve the scopes. Reads: `read:page:confluence`, `read:confluence-content.summary`, `read:space:confluence`, `read:jira-work`, `read:jira-user`. Writes: `write:jira-work` (the `canon.gate` issue property for JQL, evidence attachments, sample work items), `write:page:confluence` (used **only** by *Load sample data* / *Publish sample v4* to create the sample page), `storage:app`.
+3. Open **Jira settings → Apps → Canon setup**. The setup checklist (section 7) tells you what is still missing.
 
 ## 2. Give Canon access to your procedure space (important)
 Canon reads Confluence **as the app**. In our testing the app could **not** see spaces that already existed before it was installed: page reads returned 404 and no page events arrived. Spaces created **after** install worked at once.
 
 Pick one:
-- **Recommended for judging:** use **Canon settings → Load sample data** and let it create a new space and project. Everything is pre-wired.
+- **Recommended for judging:** create a new Confluence space (after installing Canon) and a company-managed Jira project, then open **Jira settings → Apps → Canon setup → Sample data**, enter the two keys and click **Load sample data**. It creates *SOP-PAY-014 … [Sample data]* v1–v3 (approved), 4 `[Sample]` work items with bindings, and an auto-bind mapping for `<PROJECT>/Task` (only if you have none). Rerunning it is safe.
 - **Use an existing space:** in Confluence, open *Space settings → Users → Add people and agents* for the procedure space. Search for "Canon": it lists **canon** and **Canon Procedure Guard** (type: App). Add both apps, each with a role of at least *view* access, then click *Add*. (Verified in the browser on 22 Nov 2026 (IST); Confluence now uses roles, not the older *Permissions → Apps* page.) Then open a procedure page: the Canon byline should show "not controlled", not "Canon can't read this page".
 
 If Canon can't read a page, the byline says *"Canon can't read this page. Ask an admin to give the Canon app access to this space."*, and the Jira gate **blocks** (fails closed). It never silently allows.
 
 ## 3. Add the gate to a workflow
-Canon's setup page checks this for you. To do it by hand: Jira workflow editor → the transition to Done → **Rules → Validate details → Canon gate**.
+Jira workflow editor → the transition to Done → **Rules → Validate details → Canon gate**. Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition and re-run the checks.
 
 ## 4. Show the Canon panel on every work item
 Forge issue panels are **not shown by default**. Pick one:
@@ -30,3 +31,16 @@ Forge issue panels are **not shown by default**. Pick one:
 
 ## 6. Known platform behaviour
 Confluence Cloud does not keep the "minor edit / don't notify watchers" flag on saved versions; it always reads back as `false`. Under the `every-major` policy, Canon therefore decides with its own diff: typo-only edits are **not** auto-approved and do not supersede tickets.
+
+## 7. Setup checklist (Jira settings → Apps → Canon setup)
+Jira admins only. Each check is OK, CHECK or FIX, with the fix shown inline:
+| Check | OK when | Fix |
+|---|---|---|
+| Confluence connected | Canon can reach Confluence as the app | Install Canon in Confluence on the same site |
+| Procedure space access | Every controlled procedure is readable by Canon | Space settings → Users → Add people and agents → "Canon" → role → Add, or load sample data into a new space |
+| Canon gate | The gate has run on a Done transition | Add the **Canon gate** validator to Done, then try one Done |
+| Policy | Shows revision policy, Block/Warn mode, independent approver | Switch Warn to Block to enforce |
+| Auto-bind | Every mapping points at a controlled procedure | Mark the page controlled or change the mapping |
+| Procedures | Count of controlled procedures and open bindings | — |
+
+The same page edits gate settings (Block/Warn, revision policy, auto-bind mappings) and holds **Load sample data** / **Publish sample v4**.

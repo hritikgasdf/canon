@@ -12,6 +12,20 @@ export async function isProjectAdmin(projectKey: string): Promise<boolean> {
   return j.permissions?.ADMINISTER_PROJECTS?.havePermission === true;
 }
 
+/** Whether the current user is a Jira administrator. Any failure is false. */
+export async function isJiraAdmin(): Promise<boolean> {
+  try {
+    const res = await api.asUser().requestJira(route`/rest/api/3/mypermissions?permissions=ADMINISTER`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return false;
+    const j = (await res.json()) as { permissions?: { ADMINISTER?: { havePermission?: unknown } } };
+    return j.permissions?.ADMINISTER?.havePermission === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether `accountId` can browse the issue, checked as the app. Any failure is false. */
 export async function canUserBrowseIssue(accountId: string, issueKey: string): Promise<boolean> {
   try {

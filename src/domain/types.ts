@@ -126,6 +126,12 @@ export interface SampleState {
   v4PublishedAt?: string;
 }
 
+export interface GateHeartbeat {
+  at: string;
+  issueKey: string;
+  outcome: 'allow' | 'block' | 'warn' | 'no-binding' | 'error';
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   revisionPolicy: 'approved-only',
   validatorMode: 'block',
