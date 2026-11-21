@@ -75,7 +75,7 @@ export async function runSetupChecks(deps: SetupDeps): Promise<{ checks: SetupCh
           status: 'warn',
           title,
           detail: 'No Done transition has run the Canon gate yet',
-          fix: "Add the 'Canon procedure gate' validator to the Done transition of your workflow (Workflow editor → Done transition → Validators → Add → Canon procedure gate), then try a Done transition.",
+          fix: "Add the 'Canon gate' validator to the Done transition of your workflow (Workflow editor → Done transition → Validators → Add → Canon gate), then try a Done transition.",
         };
       }
       return { id: 'gate', status: 'ok', title, detail: `Canon gate last ran ${hb.at} on ${hb.issueKey}` };
