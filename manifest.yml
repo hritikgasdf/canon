@@ -1,0 +1,101 @@
+modules:
+  jira:issuePanel:
+    - key: canon-issue-panel
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: Canon
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  confluence:contentBylineItem:
+    - key: canon-byline
+      resource: byline
+      resolver:
+        function: resolver
+      render: native
+      title: Canon
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: page-events
+      handler: index.onPageEvent
+    - key: canon-gate-fn
+      handler: index.canonGate
+    - key: rovo-get-gate-status
+      handler: index.getGateStatus
+    - key: canon-reconcile-fn
+      handler: index.runReconcile
+  scheduledTrigger:
+    - key: canon-reconcile
+      function: canon-reconcile-fn
+      interval: fiveMinute
+  action:
+    - key: canon-get-gate-status
+      name: Get Canon gate status
+      function: rovo-get-gate-status
+      actionVerb: GET
+      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (CURRENT, SUPERSEDED, NO_BINDING or UNVERIFIED).
+      inputs:
+        note:
+          title: Note
+          type: string
+          required: false
+          description: Optional free text; ignored
+  rovo:agent:
+    - key: canon-agent
+      name: Canon Procedure Guard
+      description: Explains whether this work item is still following the approved procedure version and what changed.
+      prompt: |
+        You are the Canon Procedure Guard for regulated change work.
+        When asked about a work item, always call canon-get-gate-status first.
+        Explain the returned state in plain language:
+        - CURRENT: the work item is bound to the procedure version that is still current.
+        - SUPERSEDED: the procedure was revised after this work item was bound; say which versions.
+        - NO_BINDING: the work item is not bound to a Confluence procedure.
+        - UNVERIFIED: Canon could not check right now; say so and do not guess.
+        Never claim a step is done or complete.
+        Never attest, sign or override anything.
+        When attestation or sign-off is needed, direct the user to the Canon panel on the Jira work item.
+      conversationStarters:
+        - Is this work item clear to close?
+        - Which procedure version is this work bound to?
+      actions:
+        - canon-get-gate-status
+  jira:workflowValidator:
+    - key: canon-gate
+      name: Canon gate
+      description: Blocks the transition while the bound Confluence procedure has a newer version than the one this work started under.
+      function: canon-gate-fn
+      projectTypes:
+        - company-managed
+        - team-managed
+  trigger:
+    - key: canon-page-events
+      function: page-events
+      events:
+        - avi:confluence:updated:page
+        - avi:confluence:created:page
+        - avi:confluence:archived:page
+resources:
+  - key: main
+    path: src/frontend/index.tsx
+  - key: byline
+    path: src/frontend/byline.tsx
+permissions:
+  scopes:
+    - read:page:confluence
+    - read:confluence-content.summary
+    - read:jira-work
+    - storage:app
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/12bf2743-b147-41da-9c66-4f171fa7bdfd
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false
