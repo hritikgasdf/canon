@@ -20,6 +20,8 @@ modules:
       handler: index.handler
     - key: page-events
       handler: index.onPageEvent
+    - key: issue-events
+      handler: index.onIssueUpdated
     - key: canon-gate-fn
       handler: index.canonGate
     - key: rovo-get-gate-status
@@ -77,6 +79,10 @@ modules:
         - avi:confluence:updated:page
         - avi:confluence:created:page
         - avi:confluence:archived:page
+    - key: canon-issue-events
+      function: issue-events
+      events:
+        - avi:jira:updated:issue
 resources:
   - key: main
     path: src/frontend/index.tsx
