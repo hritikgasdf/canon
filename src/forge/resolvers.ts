@@ -224,4 +224,4 @@ resolver.define('canonPublishV4', (req) => publishV4Handler(req, adminDeps()));
 resolver.define('canonSettings', (req) => settingsHandler(req, adminDeps()));
 resolver.define('canonSaveSettings', (req) => saveSettingsHandler(req, adminDeps()));
 
-export const handler =resolver.getDefinitions();
+export const handler = resolver.getDefinitions();
