@@ -17,7 +17,8 @@ import { buildIssueView } from '../domain/issueView';
 import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
 import { evidenceAttachHandler, evidenceHandler } from './evidenceResolver';
 import { uploadAttachments } from './attachments';
-import { isJiraAdmin, isProjectAdmin } from './permissions';
+import { canBrowseProject, isJiraAdmin, isProjectAdmin } from './permissions';
+import { registerHandler, registerVerifyHandler } from './registerResolver';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
@@ -224,4 +225,8 @@ resolver.define('canonPublishV4', (req) => publishV4Handler(req, adminDeps()));
 resolver.define('canonSettings', (req) => settingsHandler(req, adminDeps()));
 resolver.define('canonSaveSettings', (req) => saveSettingsHandler(req, adminDeps()));
 
-export const handler = resolver.getDefinitions();
+const registerDeps = () => ({ repos: createAppRepos(), canBrowseProject, canView: canUserView });
+resolver.define('canonRegister', (req) => registerHandler(req, registerDeps()));
+resolver.define('canonRegisterVerify', (req) => registerVerifyHandler(req, registerDeps()));
+
+export const handler =resolver.getDefinitions();

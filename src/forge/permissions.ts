@@ -12,6 +12,22 @@ export async function isProjectAdmin(projectKey: string): Promise<boolean> {
   return j.permissions?.ADMINISTER_PROJECTS?.havePermission === true;
 }
 
+/** Whether the current user can browse the project. Any failure is false. */
+export async function canBrowseProject(projectKey: string): Promise<boolean> {
+  try {
+    const res = await api
+      .asUser()
+      .requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=BROWSE_PROJECTS`, {
+        headers: { Accept: 'application/json' },
+      });
+    if (!res.ok) return false;
+    const j = (await res.json()) as { permissions?: { BROWSE_PROJECTS?: { havePermission?: unknown } } };
+    return j.permissions?.BROWSE_PROJECTS?.havePermission === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether the current user is a Jira administrator. Any failure is false. */
 export async function isJiraAdmin(): Promise<boolean> {
   try {

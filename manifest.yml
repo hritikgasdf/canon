@@ -14,6 +14,13 @@ modules:
         function: resolver
       render: native
       title: Canon setup
+  jira:projectPage:
+    - key: canon-register
+      resource: register
+      resolver:
+        function: resolver
+      render: native
+      title: Canon register
   confluence:contentBylineItem:
     - key: canon-byline
       resource: byline
@@ -194,6 +201,8 @@ resources:
     path: src/frontend/byline.tsx
   - key: admin
     path: src/frontend/admin.tsx
+  - key: register
+    path: src/frontend/register.tsx
 permissions:
   scopes:
     - read:page:confluence
