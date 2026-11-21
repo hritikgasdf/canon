@@ -5,6 +5,8 @@ import { approveVersion, ApproveError, markControlled, procedureState } from '..
 import { bindIssue, BindError } from '../domain/bind';
 import { buildIssueView } from '../domain/issueView';
 import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
+import { evidenceAttachHandler, evidenceHandler } from './evidenceResolver';
+import { uploadAttachments } from './attachments';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
@@ -122,6 +124,15 @@ resolver.define('canonAttestation', (req) => attestationHandler(req, attestDeps(
 resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps()));
 resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
 resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
+
+const evidenceDeps = () => ({
+  repos: createAppRepos(),
+  canView: canUserView,
+  upload: uploadAttachments,
+  now: () => new Date().toISOString(),
+});
+resolver.define('canonEvidence', (req) => evidenceHandler(req, evidenceDeps()));
+resolver.define('canonEvidenceAttach', (req) => evidenceAttachHandler(req, evidenceDeps()));
 
 async function isProjectAdmin(projectKey: string): Promise<boolean> {
   const res = await api

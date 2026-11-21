@@ -24,6 +24,7 @@ import { invoke } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
+import type { EvidencePack } from '../domain/evidence';
 import type {
   Attestation,
   AttestationItem,
@@ -443,6 +444,135 @@ const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Prom
   );
 };
 
+// ---- Evidence tab ----
+
+type EvidenceResponse = { ok: true; pack: EvidencePack } | Failure;
+
+type EvidenceAttachResponse = { ok: true; files: string[] } | Failure;
+
+type EvidenceLoadState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; pack: EvidencePack };
+
+const EvidenceTab = () => {
+  const [state, setState] = useState<EvidenceLoadState>({ kind: 'loading' });
+  const [busy, setBusy] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<string[] | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const res = (await invoke('canonEvidence')) as EvidenceResponse;
+      setState(res.ok ? { kind: 'ready', pack: res.pack } : { kind: 'error', message: res.message });
+    } catch (e) {
+      setState({ kind: 'error', message: e instanceof Error ? e.message : 'Could not load evidence.' });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const attach = async () => {
+    setBusy(true);
+    setAttachError(null);
+    setAttachedFiles(null);
+    try {
+      const res = (await invoke('canonEvidenceAttach')) as EvidenceAttachResponse;
+      if (res.ok) {
+        setAttachedFiles(res.files);
+        await load();
+      } else {
+        setAttachError(res.message);
+      }
+    } catch (e) {
+      setAttachError(e instanceof Error ? e.message : 'Attach failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state.kind === 'loading') return <Spinner />;
+  if (state.kind === 'error') {
+    return (
+      <SectionMessage appearance="error">
+        <Text>{state.message}</Text>
+      </SectionMessage>
+    );
+  }
+
+  const { pack } = state;
+  return (
+    <Stack space="space.200">
+      {pack.chain.ok ? (
+        <Inline space="space.100" alignBlock="center">
+          <Lozenge appearance="success">Audit chain verified</Lozenge>
+          <Text>{`${pack.chain.count} events · head ${(pack.chain.headHash ?? '—').slice(0, 12)}`}</Text>
+        </Inline>
+      ) : (
+        <Stack space="space.100">
+          <Lozenge appearance="removed">{`Audit chain BROKEN at event ${pack.chain.brokenAt}`}</Lozenge>
+          <SectionMessage appearance="error">
+            <Text>{`Audit chain BROKEN at event ${pack.chain.brokenAt}. Treat this evidence as untrusted.`}</Text>
+          </SectionMessage>
+        </Stack>
+      )}
+
+      <Stack space="space.100">
+        <Heading as="h4">Bindings</Heading>
+        {pack.bindings.length === 0 && <Text>No controlled procedure bound.</Text>}
+        {pack.bindings.map((b) => {
+          const lozenge = LOZENGE_FOR_STATE[b.state];
+          return (
+            <Stack key={b.id} space="space.050">
+              <Inline space="space.100" alignBlock="center">
+                <Text>{b.title ?? 'Procedure restricted'}</Text>
+                <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
+                <Text>{`v${b.boundVersion}`}</Text>
+              </Inline>
+              {b.attestation !== undefined && (
+                <Inline space="space.100" alignBlock="center">
+                  <Text>{`Sealed by ${b.attestation.checker ?? '—'} at ${b.attestation.checkerSignedAt ?? '—'}`}</Text>
+                  {b.attestation.sealValid ? (
+                    <Lozenge appearance="success">Seal valid</Lozenge>
+                  ) : (
+                    <Lozenge appearance="removed">Seal invalid</Lozenge>
+                  )}
+                </Inline>
+              )}
+            </Stack>
+          );
+        })}
+      </Stack>
+
+      <Stack space="space.100">
+        <Heading as="h4">Audit timeline</Heading>
+        {pack.audit.length === 0 && <Text>No audit events.</Text>}
+        {pack.audit.map((ev) => (
+          <Text key={ev.seq}>{`#${ev.seq} ${ev.at} ${ev.type} by ${ev.actor}`}</Text>
+        ))}
+      </Stack>
+
+      {attachError !== null && (
+        <SectionMessage appearance="error">
+          <Text>{attachError}</Text>
+        </SectionMessage>
+      )}
+      {attachedFiles !== null && (
+        <SectionMessage appearance="success">
+          <Text>{`Attached: ${attachedFiles.join(', ')}`}</Text>
+        </SectionMessage>
+      )}
+      <Inline space="space.100" alignBlock="end">
+        <Button appearance="primary" isDisabled={busy} onClick={() => void attach()}>
+          Attach evidence pack to issue
+        </Button>
+      </Inline>
+    </Stack>
+  );
+};
+
 // ---- Bind section (below the tabs) ----
 
 type BindSectionProps = { onBound: () => Promise<void> };
@@ -547,6 +677,7 @@ const App = () => {
             <Tab>Status</Tab>
             <Tab>Delta</Tab>
             <Tab>Attest</Tab>
+            <Tab>Evidence</Tab>
           </TabList>
           <TabPanel>
             <StatusTab view={state.view} onChanged={loadView} />
@@ -556,6 +687,9 @@ const App = () => {
           </TabPanel>
           <TabPanel>
             <AttestTab view={state.view} onChanged={loadView} />
+          </TabPanel>
+          <TabPanel>
+            <EvidenceTab />
           </TabPanel>
         </Tabs>
       )}
