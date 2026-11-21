@@ -23,7 +23,7 @@ import ForgeReconciler, {
 import { invoke, rovo } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import { REASON_MIN } from '../domain/limits';
-import { needsReattestation } from '../domain/panelLogic';
+import { askCanonPrompt, needsReattestation, showAskCanon } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -730,7 +730,7 @@ const App = () => {
 
   const [opening, setOpening] = useState(false);
   const [openHint, setOpenHint] = useState(false);
-  const hasBindings = state.kind === 'ready' && state.view.bindings.length > 0;
+  const hasBindings = state.kind === 'ready' && showAskCanon(state.view.bindings.length);
 
   // One click = one request: the button is disabled while Rovo opens, so repeated clicks can't
   // queue several conversations. If the sidebar hasn't appeared after a few seconds, show how to
@@ -741,7 +741,8 @@ const App = () => {
     setOpenHint(false);
     const hint = setTimeout(() => setOpenHint(true), 4000);
     try {
-      if (!(await rovo.isEnabled())) {
+      // isEnabled() is false only when Rovo is off for this site; if the check itself fails, still try to open.
+      if (!(await rovo.isEnabled().catch(() => true))) {
         setRovoUnavailable(true);
         return;
       }
@@ -749,9 +750,7 @@ const App = () => {
         type: 'forge',
         agentKey: 'canon-agent',
         agentName: 'Canon Procedure Guard',
-        prompt: needsRedo
-          ? `What changed in my procedure for ${issueKey} and what do I need to redo?`
-          : `Is ${issueKey} clear to close?`,
+        prompt: askCanonPrompt(issueKey, needsRedo),
       });
       setRovoUnavailable(false);
     } catch {
