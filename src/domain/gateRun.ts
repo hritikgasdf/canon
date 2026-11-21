@@ -56,6 +56,8 @@ export async function runCanonGate(
     }
     procedures[pageId] = proc;
     // Bindings only change here through the inline supersede, so re-read them only after it ran.
+    // (A binding written concurrently by another invocation after the initial read is not seen;
+    // that window is the same as reading just before the gate started.)
     const source = refreshed ? await repos.bindings.listByIssue(issueKey) : initial;
     bindingsByPage[pageId] = source.filter((b) => b.pageId === pageId);
   }));

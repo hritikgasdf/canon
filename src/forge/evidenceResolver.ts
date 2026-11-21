@@ -124,7 +124,8 @@ export async function evidenceAttachHandler(req: unknown, d: EvidenceDeps): Prom
     return { ok: true, files: await attachEvidence(d, c) };
   } catch (e) {
     if (e instanceof EvidenceUploadError) {
-      return { ok: false, error: 'UPLOAD_FAILED', message: `Evidence upload failed: ${e.message}` };
+      console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e.message }));
+      return { ok: false, error: 'UPLOAD_FAILED', message: 'Evidence upload failed. Try again.' };
     }
     return fail(e);
   }
