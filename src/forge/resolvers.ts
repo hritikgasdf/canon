@@ -3,6 +3,7 @@ import api, { route } from '@forge/api';
 import {
   loadSampleHandler,
   publishV4Handler,
+  resetSampleHandler,
   sampleStateHandler,
   saveSettingsHandler,
   setupChecksHandler,
@@ -140,11 +141,34 @@ resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps(
 resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
 resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
 
+const DISPLAY_NAME_CAP = 20;
+
+/** Best effort accountId → displayName as the app (per-id lookups, so route`` escapes each id). */
+async function displayNames(ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  await Promise.all(
+    ids.slice(0, DISPLAY_NAME_CAP).map(async (id) => {
+      try {
+        const res = await api.asApp().requestJira(route`/rest/api/3/user?accountId=${id}`, {
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) return;
+        const name = ((await res.json()) as { displayName?: unknown }).displayName;
+        if (typeof name === 'string' && name !== '') out[id] = name;
+      } catch {
+        // best effort
+      }
+    }),
+  );
+  return out;
+}
+
 const evidenceDeps = () => ({
   repos: createAppRepos(),
   canView: canUserView,
   upload: uploadAttachments,
   isProjectAdmin,
+  displayNames,
   now: () => new Date().toISOString(),
 });
 resolver.define('canonEvidence', (req) => evidenceHandler(req, evidenceDeps()));
@@ -226,6 +250,7 @@ resolver.define('canonSetupChecks', (req) => setupChecksHandler(req, adminDeps()
 resolver.define('canonSampleState', (req) => sampleStateHandler(req, adminDeps()));
 resolver.define('canonLoadSample', (req) => loadSampleHandler(req, adminDeps()));
 resolver.define('canonPublishV4', (req) => publishV4Handler(req, adminDeps()));
+resolver.define('canonResetSample', (req) => resetSampleHandler(req, adminDeps()));
 resolver.define('canonSettings', (req) => settingsHandler(req, adminDeps()));
 resolver.define('canonSaveSettings', (req) => saveSettingsHandler(req, adminDeps()));
 

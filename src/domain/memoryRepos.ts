@@ -144,6 +144,9 @@ export function createMemoryRepos(): Repos {
     async put(s) {
       sampleState = structuredClone(s);
     },
+    async clear() {
+      sampleState = null;
+    },
   };
 
   let heartbeat: GateHeartbeat | null = null;

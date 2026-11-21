@@ -44,3 +44,9 @@ Jira admins only. Each check is OK, CHECK or FIX, with the fix shown inline:
 | Procedures | Count of controlled procedures and open bindings | — |
 
 The same page edits gate settings (Block/Warn, revision policy, auto-bind mappings) and holds **Load sample data** / **Publish sample v4**.
+
+## 8. Roles, and where things are
+- **Canon setup** (Jira settings → Apps → Canon setup): Jira administrators only.
+- **Break-glass override** and **Attach evidence pack**: project admins, meaning the user has *Administer Projects* on the project (normally through the project's **Administrators** role: Project settings → Access / People → add the user with role *Administrators*). Jira admins are accepted too. In Jira Cloud, being a Jira admin does not by itself grant *Administer Projects*.
+- **Canon register:** open the project, then the top tab bar → **More → Canon register** (it is not in the sidebar).
+- **Reset sample data** (Canon setup → Sample data): retires the current sample work items (their bindings are closed with a `SAMPLE_RESET` audit event), renames the old sample page, and loads a fresh v1–v3 page with new work items, so the v3 → v4 demo can be replayed.

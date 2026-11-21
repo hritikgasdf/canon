@@ -108,6 +108,7 @@ function memoryRepos(): Repos {
         return null;
       },
       async put() {},
+      async clear() {},
     },
     gateHeartbeat: {
       async get() {

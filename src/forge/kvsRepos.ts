@@ -239,6 +239,9 @@ function createSampleRepo(store: KvsStoreLike): SampleStateRepo {
     async put(s) {
       await store.set('sample', s);
     },
+    async clear() {
+      await store.delete('sample');
+    },
   };
 }
 

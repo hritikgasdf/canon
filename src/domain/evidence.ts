@@ -1,5 +1,6 @@
 // Evidence pack: pure assembly + printable HTML rendering. No @forge/* imports.
 import { verifyChain } from './audit';
+import { actorLabel, eventLabel } from './evidenceLabels';
 import { verifySeal } from './attest';
 import type { Repos } from './repos';
 import type { AttestationItem, AuditEvent, Binding, BindingState } from './types';
@@ -38,7 +39,11 @@ export interface EvidencePack {
   chain: { ok: boolean; count: number; brokenAt?: number; headHash: string | null };
   bindings: EvidenceBinding[];
   audit: AuditEvent[];
+  /** accountId → display name (best effort). */
+  actorNames?: Record<string, string>;
 }
+
+export { actorIds, actorLabel, eventLabel } from './evidenceLabels';
 
 /** Payload keys that hold only numbers, ids or hashes. Everything else is dropped in issueSafe mode. */
 export const SAFE_PAYLOAD_KEYS = [
@@ -207,7 +212,7 @@ export function renderEvidenceHtml(pack: EvidencePack): string {
   const auditRows = pack.audit
     .map(
       (ev) =>
-        `<tr><td>${e(ev.seq)}</td><td>${e(ev.at)}</td><td>${e(ev.type)}</td><td>${e(ev.actor)}</td><td class="mono">${e(ev.hash.slice(0, 12))}</td></tr>`,
+        `<tr><td>${e(ev.seq)}</td><td>${e(ev.at)}</td><td>${e(ev.type)}</td><td>${e(eventLabel(ev, pack.actorNames))}</td><td>${e(actorLabel(ev.actor, pack.actorNames))}</td><td class="mono">${e(ev.hash.slice(0, 12))}</td></tr>`,
     )
     .join('');
 
@@ -222,7 +227,7 @@ export function renderEvidenceHtml(pack: EvidencePack): string {
     `<p class="badge ${pack.chain.ok ? 'ok' : 'bad'}">${e(badge)}</p>` +
     `<h2>Bindings</h2><table><tr><th>Binding</th><th>Page</th><th>Title</th><th>State</th><th>Bound v</th><th>Superseded by</th></tr>${bindingRows}</table>` +
     `<h2>Attestations</h2>${attestations || '<p>None.</p>'}` +
-    `<h2>Audit timeline</h2><table><tr><th>Seq</th><th>At</th><th>Type</th><th>Actor</th><th>Hash</th></tr>${auditRows}</table>` +
+    `<h2>Audit timeline</h2><table><tr><th>Seq</th><th>At</th><th>Type</th><th>Event</th><th>Actor</th><th>Hash</th></tr>${auditRows}</table>` +
     `</body></html>`
   );
 }

@@ -12,6 +12,7 @@ import {
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
 import { canUserBrowseIssue } from './permissions';
+import { actorFromContext } from './invocationContext';
 
 type Failure = { ok: false; error: string; message: string };
 
@@ -46,7 +47,8 @@ async function run<T extends object>(payload: unknown, fn: (issueKey: string) =>
     return {
       ok: false,
       error: 'UNVERIFIED',
-      message: 'Canon could not read the procedure data right now, so nothing can be confirmed. Try again, or open the Canon panel.',
+      message:
+        'Canon could not read the procedure data right now, so nothing can be confirmed. Try again, or open the Canon panel.',
     };
   }
 }
@@ -66,7 +68,11 @@ export function getApprovedProcedure(payload: unknown, context?: unknown): Promi
   const raw = (payload as { version?: unknown } | null | undefined)?.version;
   const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
   if (n !== undefined && n !== null && !(typeof n === 'number' && Number.isInteger(n) && n > 0)) {
-    return Promise.resolve<Failure>({ ok: false, error: 'INVALID_INPUT', message: 'version must be a positive integer.' });
+    return Promise.resolve<Failure>({
+      ok: false,
+      error: 'INVALID_INPUT',
+      message: 'version must be a positive integer.',
+    });
   }
   const version = typeof n === 'number' ? n : undefined;
   return run(payload, (key) => rovoApprovedProcedure(key, version, deps()));
@@ -76,28 +82,47 @@ function writeDeps(): RovoWriteDeps {
   return { ...deps(), canUserBrowseIssue };
 }
 
-// The actor comes only from the trusted invocation context, never from action inputs.
-function extractActor(context: unknown): string | null {
-  const id = (context as { accountId?: unknown } | null | undefined)?.accountId;
-  return typeof id === 'string' && id !== '' ? id : null;
-}
+// The actor comes only from the trusted invocation context (context.principal.accountId), never
+// from action inputs.
+const extractActor = actorFromContext;
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
+/** A plain completion message so the agent reports success instead of re-proposing the action. */
+function withDoneMessage(r: object): object {
+  const o = r as { ok?: unknown; items?: unknown[] };
+  if (o.ok !== true || !Array.isArray(o.items)) return r;
+  return {
+    ...r,
+    message: `Checklist saved with ${o.items.length} item(s). It is in the Canon panel's Attest tab. This action is complete; do not call it again for these items. People mark items done and sign off in the panel.`,
+  };
+}
+
+function logOutcome(action: string, r: object): object {
+  const o = r as { ok?: unknown; error?: unknown; status?: unknown };
+  console.log(JSON.stringify({ tag: 'canon-rovo-write', action, ok: o.ok === true, error: o.error, status: o.status }));
+  return r;
+}
+
 export function createReattestChecklist(payload: unknown, context?: unknown): Promise<object> {
   const actor = extractActor(context);
-  if (actor === null) return Promise.resolve(noContext());
+  if (actor === null) return Promise.resolve(logOutcome('checklist', noContext()));
   const p = (payload ?? {}) as { itemIdsJson?: unknown; tasksJson?: unknown; bindingId?: unknown };
   return run(payload, (key) =>
-    rovoCreateChecklist(key, actor, { bindingId: str(p.bindingId), itemIdsJson: p.itemIdsJson, tasksJson: p.tasksJson }, writeDeps()),
-  );
+    rovoCreateChecklist(
+      key,
+      actor,
+      { bindingId: str(p.bindingId), itemIdsJson: p.itemIdsJson, tasksJson: p.tasksJson },
+      writeDeps(),
+    ),
+  ).then((r) => logOutcome('checklist', withDoneMessage(r)));
 }
 
 export function assignChecker(payload: unknown, context?: unknown): Promise<object> {
   const actor = extractActor(context);
-  if (actor === null) return Promise.resolve(noContext());
+  if (actor === null) return Promise.resolve(logOutcome('checker', noContext()));
   const p = (payload ?? {}) as { checkerAccountId?: unknown; bindingId?: unknown };
   return run(payload, (key) =>
     rovoAssignChecker(key, actor, { bindingId: str(p.bindingId), checkerAccountId: p.checkerAccountId }, writeDeps()),
-  );
+  ).then((r) => logOutcome('checker', r));
 }

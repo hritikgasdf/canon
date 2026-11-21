@@ -93,6 +93,7 @@ const App = () => {
         setError(friendly(res));
         return;
       }
+      setState((prev) => (prev ? { ...prev, procedure: res.procedure } : prev));
       await load();
     });
 
@@ -103,10 +104,13 @@ const App = () => {
         setError(friendly(res));
         return;
       }
-      if (res.supersede) {
-        const count = res.supersede.superseded.length;
-        setNotice(`Approved v${version}; ${count} tickets need re-attestation`);
-      }
+      // Apply the approval result at once, so the badges never show the pre-approval state,
+      // then re-read the full state.
+      setState((prev) => (prev ? { ...prev, procedure: res.procedure, pendingDraft: false } : prev));
+      const count = res.supersede?.superseded.length ?? 0;
+      setNotice(
+        count > 0 ? `Approved v${version}; ${count} tickets need re-attestation` : `Approved v${version}`,
+      );
       await load();
     });
 

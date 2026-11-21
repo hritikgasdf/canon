@@ -23,6 +23,7 @@ import type { SampleState, Settings } from '../domain/types';
 type Failure = { ok: false; error: string; message: string };
 type Res<T> = ({ ok: true } & T) | Failure;
 type Loaded = { status: 'LOADED' | 'ALREADY_LOADED'; state: SampleState };
+type Reset = { status: 'RESET'; state: SampleState };
 type Published = { status: 'PUBLISHED' | 'ALREADY_PUBLISHED'; version: number };
 
 const GENERIC = 'Canon could not complete this request. Try again.';
@@ -271,6 +272,7 @@ const SampleSection = ({ onChanged }: { onChanged: () => void }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const fetchSample = useCallback(async () => {
     const r = await attempt<{ sample: SampleState | null }>('canonSampleState', {}, setError);
@@ -295,6 +297,22 @@ const SampleSection = ({ onChanged }: { onChanged: () => void }) => {
           ? 'Already loaded'
           : `Loaded: page ${state.pageId}, issues ${i.done}, ${i.hero}, ${i.second}, ${i.todo}`,
       );
+      onChanged();
+    }
+    setBusy(false);
+  };
+
+  const resetSample = async () => {
+    setConfirming(false);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const r = await attempt<{ result: Reset }>('canonResetSample', {}, setError);
+    if (r) {
+      const { state } = r.result;
+      const i = state.issues;
+      setSample(state);
+      setNotice(`Reset: new page ${state.pageId}, issues ${i.done}, ${i.hero}, ${i.second}, ${i.todo}`);
       onChanged();
     }
     setBusy(false);
@@ -357,7 +375,24 @@ const SampleSection = ({ onChanged }: { onChanged: () => void }) => {
             <Button appearance="primary" isDisabled={busy} onClick={() => void publishV4()}>
               Publish sample v4
             </Button>
+            <Button appearance="warning" isDisabled={busy || confirming} onClick={() => setConfirming(true)}>
+              Reset sample data
+            </Button>
           </Inline>
+          {confirming && (
+            <SectionMessage appearance="warning">
+              <Text>
+                This retires the current sample work items and page and creates fresh ones (v1–v3, nothing superseded).
+                Click Confirm reset.
+              </Text>
+              <Inline space="space.100">
+                <Button appearance="warning" isDisabled={busy} onClick={() => void resetSample()}>
+                  Confirm reset
+                </Button>
+                <Button onClick={() => setConfirming(false)}>Cancel</Button>
+              </Inline>
+            </SectionMessage>
+          )}
         </>
       )}
     </Stack>
