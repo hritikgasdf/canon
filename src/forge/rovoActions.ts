@@ -41,7 +41,13 @@ async function run<T extends object>(payload: unknown, fn: (issueKey: string) =>
   try {
     return await fn(issueKey);
   } catch (e) {
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    // Never pass internal error text (KVS/Confluence) to the model or the user; log it instead.
+    console.error(JSON.stringify({ tag: 'canon-rovo-error', error: e instanceof Error ? e.message : String(e) }));
+    return {
+      ok: false,
+      error: 'UNVERIFIED',
+      message: 'Canon could not read the procedure data right now, so nothing can be confirmed. Try again, or open the Canon panel.',
+    };
   }
 }
 
