@@ -76,6 +76,24 @@ describe('rovoGateStatus closed binding', () => {
     await repos.bindings.put(binding({ closedAt: NOW }));
     const r = await rovoGateStatus('PAY-1', deps);
     expect(r.bindings?.[0]).toMatchObject({ bindingId: 'b1', state: 'CLOSED', boundVersion: 3 });
+    expect(r.overall).toBe('CLOSED');
+  });
+
+  it('overall CLOSED (not BLOCKED) when done work is behind a newer approved version', async () => {
+    const { repos, deps } = setup(4);
+    await repos.procedures.put(procedure({ approved: [approved(3), approved(4)], currentApproved: 4, lastSeenVersion: 4 }));
+    await repos.bindings.put(binding({ closedAt: NOW }));
+    const r = await rovoGateStatus('PAY-1', deps);
+    expect(r.overall).toBe('CLOSED');
+  });
+
+  it('not CLOSED when one of two bindings is still open', async () => {
+    const { repos, deps } = setup(4);
+    await repos.procedures.put(procedure({ approved: [approved(3), approved(4)], currentApproved: 4, lastSeenVersion: 4 }));
+    await repos.bindings.put(binding({ closedAt: NOW }));
+    await repos.bindings.put(binding({ id: 'b2', pageId: 'P2' }));
+    const r = await rovoGateStatus('PAY-1', deps);
+    expect(r.overall).not.toBe('CLOSED');
   });
 });
 

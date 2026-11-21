@@ -117,6 +117,15 @@ export interface Settings {
   requireIndependentApprover: boolean;
 }
 
+export interface SampleState {
+  spaceKey: string;
+  projectKey: string;
+  pageId: string;
+  issues: { done: string; hero: string; second: string; todo: string };
+  loadedAt: string;
+  v4PublishedAt?: string;
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   revisionPolicy: 'approved-only',
   validatorMode: 'block',

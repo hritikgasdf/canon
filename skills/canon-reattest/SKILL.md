@@ -10,6 +10,7 @@ Follow these steps in order. Stop and ask when a step needs the user's decision.
 
 1. **Status.** Call `canon-get-gate-status`.
    - `CLEAR` or `NO_BINDING`: tell the user nothing needs re-attesting, and stop.
+   - `CLOSED`: the work item is already done; say so, and stop.
    - `UNVERIFIED`: say Canon couldn't verify, so the gate stays closed. Suggest trying again. Stop.
    - `BLOCKED` or `WARN_ONLY`: continue.
 2. **Explain.** Call `canon-explain-delta`. Summarise the material changes (path, before → after, why it matters). Mention trivial items only as "ignored as trivial".

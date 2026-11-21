@@ -99,6 +99,15 @@ export async function handleIssueUpdated(
     return { action: 'IGNORED', reason: 'no-mapping', issueKey };
   }
 
+  // An explicit binding (manual, sample loader, or an earlier auto-bind) wins: auto-bind never
+  // adds a second procedure to work that is already bound.
+  const otherOpen = (await repos.bindings.listByIssue(issueKey)).filter(
+    (b) => b.closedAt === undefined && b.pageId !== pageId,
+  );
+  if (otherOpen.length > 0) {
+    return { action: 'SKIPPED', reason: 'BOUND_TO_OTHER_PAGE', issueKey, pageId };
+  }
+
   try {
     const binding = await bindIssue(repos, { issueKey, pageId, actor: 'canon:auto-bind', at: now() });
     return { action: 'BOUND', issueKey, pageId, version: binding.boundVersion };

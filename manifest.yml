@@ -45,7 +45,7 @@ modules:
       name: Get Canon gate status
       function: rovo-get-gate-status
       actionVerb: GET
-      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (overall NO_BINDING, CLEAR, BLOCKED, WARN_ONLY or UNVERIFIED, with per-binding detail).
+      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (overall NO_BINDING, CLEAR, BLOCKED, WARN_ONLY, CLOSED or UNVERIFIED, with per-binding detail).
       inputs:
         note:
           title: Note
@@ -191,6 +191,8 @@ permissions:
     - read:confluence-content.summary
     - read:jira-work
     - write:jira-work
+    - write:page:confluence
+    - read:space:confluence
     - read:jira-user
     - storage:app
 app:

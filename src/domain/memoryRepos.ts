@@ -7,6 +7,7 @@ import {
   type AttestationRepo,
   type AuditRepo,
   type SettingsRepo,
+  type SampleStateRepo,
   type Repos,
 } from './repos';
 import {
@@ -17,6 +18,7 @@ import {
   type BindingState,
   type Delta,
   type Procedure,
+  type SampleState,
   type Settings,
   type Snapshot,
 } from './types';
@@ -132,6 +134,16 @@ export function createMemoryRepos(): Repos {
     },
   };
 
+  let sampleState: SampleState | null = null;
+  const sampleRepo: SampleStateRepo = {
+    async get() {
+      return sampleState === null ? null : structuredClone(sampleState);
+    },
+    async put(s) {
+      sampleState = structuredClone(s);
+    },
+  };
+
   return {
     procedures: procedureRepo,
     snapshots: snapshotRepo,
@@ -140,5 +152,6 @@ export function createMemoryRepos(): Repos {
     attestations: attestationRepo,
     audit: auditRepo,
     settings: settingsRepo,
+    sample: sampleRepo,
   };
 }
