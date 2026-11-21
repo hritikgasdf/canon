@@ -5,7 +5,7 @@ import { buildIssueView } from '../domain/issueView';
 import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
-import { createKvsRepos } from './kvsRepos';
+import { createAppRepos } from './kvsRepos';
 
 const resolver = new Resolver();
 
@@ -30,7 +30,7 @@ async function guarded<T extends object>(
 
 resolver.define('canonBylineState', (req) =>
   guarded(req as Req, async (pageId) => {
-    const repos = createKvsRepos();
+    const repos = createAppRepos();
     const meta = await getPageMeta(pageId);
     const s = await procedureState(repos, pageId);
     return {
@@ -50,7 +50,7 @@ resolver.define('canonBylineState', (req) =>
 resolver.define('canonMarkControlled', (req) =>
   guarded(req as Req, async (pageId, actor) => {
     const meta = await getPageMeta(pageId);
-    const procedure = await markControlled(createKvsRepos(), meta, { actor, at: new Date().toISOString() });
+    const procedure = await markControlled(createAppRepos(), meta, { actor, at: new Date().toISOString() });
     return { procedure };
   }),
 );
@@ -66,7 +66,7 @@ resolver.define('canonIssueView', async (req) => {
     const issueKey = r.context?.extension?.issue?.key;
     const accountId = r.context?.accountId;
     if (!issueKey || !accountId) return { ok: false, error: 'NO_ACCESS', message: 'Missing issue or user context.' };
-    const view = await buildIssueView(createKvsRepos(), issueKey, { canView: canUserView });
+    const view = await buildIssueView(createAppRepos(), issueKey, { canView: canUserView });
     return { ok: true, view };
   } catch (e) {
     return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
@@ -87,7 +87,7 @@ resolver.define('canonListProcedures', async (req) => {
     const rawQuery = (r.payload as { query?: unknown } | undefined)?.query;
     const query = typeof rawQuery === 'string' ? rawQuery.trim().toLowerCase() : '';
 
-    const candidates = (await createKvsRepos().procedures.listControlled()).filter(
+    const candidates = (await createAppRepos().procedures.listControlled()).filter(
       (p) => p.currentApproved !== null && p.title.toLowerCase().includes(query),
     );
 
@@ -107,11 +107,11 @@ resolver.define('canonListProcedures', async (req) => {
 });
 
 resolver.define('canonBindingDelta', (req) =>
-  bindingDeltaHandler(req, { repos: createKvsRepos(), canView: canUserView, fetchBody }),
+  bindingDeltaHandler(req, { repos: createAppRepos(), canView: canUserView, fetchBody }),
 );
 
 const attestDeps = () => ({
-  repos: createKvsRepos(),
+  repos: createAppRepos(),
   canView: canUserView,
   fetchBody,
   now: () => new Date().toISOString(),
@@ -134,7 +134,7 @@ resolver.define('canonBind', async (req) => {
     }
     if (!(await canUserView(pageId))) return { ok: false, error: 'NO_ACCESS', message: 'You do not have access to this page.' };
 
-    const binding = await bindIssue(createKvsRepos(), {
+    const binding = await bindIssue(createAppRepos(), {
       issueKey,
       pageId,
       actor: accountId,
@@ -152,7 +152,7 @@ resolver.define('canonApprove', (req) =>
     const version = (req as Req).payload && ((req as Req).payload as { version?: unknown }).version;
     if (typeof version !== 'number' || !Number.isInteger(version)) throw new Error('payload.version must be an integer');
     const meta = await getPageMeta(pageId);
-    const r = await approveVersion(createKvsRepos(), fetchBody, meta, { version, actor, at: new Date().toISOString() });
+    const r = await approveVersion(createAppRepos(), fetchBody, meta, { version, actor, at: new Date().toISOString() });
     return { procedure: r.procedure, supersede: r.supersede };
   }),
 );

@@ -1,10 +1,10 @@
 import { reconcile } from '../domain/reconcile';
-import { createKvsRepos } from './kvsRepos';
+import { createAppRepos } from './kvsRepos';
 import { fetchBody, getPageMeta } from './confluence';
 
 export async function runReconcile(): Promise<void> {
   try {
-    const out = await reconcile(createKvsRepos(), {
+    const out = await reconcile(createAppRepos(), {
       getPageMeta,
       fetchBody,
       now: () => new Date().toISOString(),

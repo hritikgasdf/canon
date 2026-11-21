@@ -1,6 +1,6 @@
 import { buildPageEventLog } from '../domain/eventLag';
 import { handlePageEvent } from '../domain/pageEvent';
-import { createKvsRepos } from './kvsRepos';
+import { createAppRepos } from './kvsRepos';
 import { fetchBody, getPageMeta } from './confluence';
 
 export async function onPageEvent(event: unknown): Promise<void> {
@@ -21,7 +21,7 @@ export async function onPageEvent(event: unknown): Promise<void> {
 
   try {
     const result = await handlePageEvent(
-      createKvsRepos(),
+      createAppRepos(),
       { getPageMeta, fetchBody, now: () => new Date().toISOString() },
       event,
     );
