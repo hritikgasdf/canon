@@ -13,7 +13,13 @@ export type AttestErrorCode =
   | 'REASON_REQUIRED'
   | 'NOT_CHECKER'
   | 'NO_CHECKER'
-  | 'ITEMS_OPEN';
+  | 'ITEMS_OPEN'
+  | 'SELF_SIGN'
+  | 'NOT_FOUND'
+  | 'BAD_STATE'
+  | 'NO_TARGET'
+  | 'NOT_STARTED'
+  | 'INVALID_ACTION';
 
 export class AttestError extends Error {
   readonly code: AttestErrorCode;
@@ -148,10 +154,16 @@ export function assignChecker(a: Attestation, p: { checker: string }): Attestati
   return { ...a, items: a.items.map((i) => ({ ...i })), checker: p.checker };
 }
 
-export function sign(a: Attestation, p: { actor: string; at: string }): Attestation {
+/** `allowImplementer` is only for settings.requireIndependentApprover === false. */
+export function sign(
+  a: Attestation,
+  p: { actor: string; at: string; allowImplementer?: boolean },
+): Attestation {
   assertOpen(a);
   if (a.checker === undefined) throw new AttestError('NO_CHECKER', 'No checker assigned');
-  if (p.actor === a.implementer) throw new AttestError('SELF_REVIEW', 'Implementer cannot sign');
+  if (p.actor === a.implementer && !p.allowImplementer) {
+    throw new AttestError('SELF_REVIEW', 'Implementer cannot sign');
+  }
   if (p.actor !== a.checker) throw new AttestError('NOT_CHECKER', 'Only the assigned checker can sign');
   if (a.items.some((i) => i.status === 'PENDING')) {
     throw new AttestError('ITEMS_OPEN', 'All items must be done or not material');

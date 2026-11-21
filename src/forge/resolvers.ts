@@ -2,6 +2,7 @@ import Resolver from '@forge/resolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
 import { buildIssueView } from '../domain/issueView';
+import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createKvsRepos } from './kvsRepos';
@@ -108,6 +109,17 @@ resolver.define('canonListProcedures', async (req) => {
 resolver.define('canonBindingDelta', (req) =>
   bindingDeltaHandler(req, { repos: createKvsRepos(), canView: canUserView, fetchBody }),
 );
+
+const attestDeps = () => ({
+  repos: createKvsRepos(),
+  canView: canUserView,
+  fetchBody,
+  now: () => new Date().toISOString(),
+});
+resolver.define('canonAttestation', (req) => attestationHandler(req, attestDeps()));
+resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps()));
+resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
+resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
 
 resolver.define('canonBind', async (req) => {
   try {
