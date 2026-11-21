@@ -23,7 +23,14 @@ export interface EvidenceDeps {
 
 async function fillNames(d: EvidenceDeps, pack: EvidencePack): Promise<void> {
   try {
-    const ids = actorIds(pack.audit);
+    const extra: string[] = [];
+    for (const b of pack.bindings) {
+      for (const a of b.attestations ?? []) {
+        extra.push(a.implementer);
+        if (a.checker) extra.push(a.checker);
+      }
+    }
+    const ids = actorIds([...pack.audit, ...extra.map((actor) => ({ actor }))]);
     if (d.displayNames && ids.length > 0) pack.actorNames = (await d.displayNames(ids)) ?? {};
     else pack.actorNames = {};
   } catch {

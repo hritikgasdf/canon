@@ -7,11 +7,13 @@ import type { BodyFetcher } from '../domain/supersede';
 import type { Attestation } from '../domain/types';
 
 export type AttestResponse =
-  | { ok: true; attestation: Attestation | null }
+  | { ok: true; attestation: Attestation | null; names?: Record<string, string> }
   | { ok: false; error: string; message: string };
 
 export interface AttestDeps {
   repos: Repos;
+  /** Best effort accountId → display name lookup. */
+  displayNames?(ids: string[]): Promise<Record<string, string>>;
   canView(pageId: string): Promise<boolean>;
   fetchBody: BodyFetcher;
   now: () => string;
@@ -29,6 +31,21 @@ type Run = (a: {
   at: string;
   payload: Record<string, unknown>;
 }) => Promise<Attestation | null>;
+
+/** Names for implementer, checker and item actors. Never throws; failures give {}. */
+async function namesFor(deps: AttestDeps, a: Attestation | null): Promise<Record<string, string>> {
+  try {
+    if (!a || !deps.displayNames) return {};
+    const ids = new Set<string>([a.implementer]);
+    if (a.checker) ids.add(a.checker);
+    for (const i of a.items) if (i.by) ids.add(i.by);
+    const real = [...ids].filter((x) => x !== '' && !x.startsWith('sample:') && !x.startsWith('canon:'));
+    if (real.length === 0) return {};
+    return (await deps.displayNames(real)) ?? {};
+  } catch {
+    return {};
+  }
+}
 
 async function handle(req: unknown, deps: AttestDeps, run: Run): Promise<AttestResponse> {
   try {
@@ -50,7 +67,7 @@ async function handle(req: unknown, deps: AttestDeps, run: Run): Promise<AttestR
       return { ok: false, error: 'NO_ACCESS', message: 'You do not have access to this page.' };
     }
     const attestation = await run({ issueKey, bindingId, actor, at: deps.now(), payload });
-    return { ok: true, attestation };
+    return { ok: true, attestation, names: await namesFor(deps, attestation) };
   } catch (e) {
     if (e instanceof AttestError) return { ok: false, error: e.code, message: e.message };
     console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));

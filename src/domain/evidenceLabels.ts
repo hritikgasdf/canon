@@ -53,6 +53,24 @@ export function eventLabel(
       return 'Work closed';
     case 'WORK_REOPENED':
       return 'Work reopened';
+    case 'REATTEST_STARTED':
+      return `Re-attestation started by ${actor}`;
+    case 'ROVO_TASKS_SET': {
+      const n = Array.isArray(p.itemIds) ? p.itemIds.length : 0;
+      return `Canon agent suggested ${n} tasks (confirmed by ${actor})`;
+    }
+    case 'ITEM_ATTESTED':
+      return `Item ${p.action === 'NOT_MATERIAL' ? 'marked not material' : 'done'} by ${actor}`;
+    case 'SIGNED_OFF':
+      return `Signed off by ${actor} (independent checker)`;
+    case 'EVIDENCE_EXPORTED':
+      return `Evidence pack attached by ${actor}`;
+    case 'BREAK_GLASS':
+      return `Break-glass override by ${actor}`;
+    case 'SAMPLE_LOADED':
+      return 'Sample data: loaded';
+    case 'SAMPLE_RESET':
+      return 'Sample data: reset';
     default:
       return `${ev.type} by ${actor}`;
   }

@@ -325,6 +325,7 @@ export async function rovoCreateChecklist(
       toVersion: number;
       items: { itemId: string; status: string; rovoTask?: string }[];
       implementer: string;
+      status: 'CREATED' | 'ALREADY_CREATED';
     }
   | RovoFailure
 > {
@@ -348,7 +349,9 @@ export async function rovoCreateChecklist(
     if (parsed.some((t) => !att.items.some((i) => i.itemId === t.itemId))) {
       return fail('UNKNOWN_ITEM', 'One or more item ids are not in the attestation.');
     }
-    const next = setRovoTasks(att, parsed);
+    // First suggestion wins: never overwrite an existing rovoTask (the agent tends to rephrase).
+    const fresh = parsed.filter((t) => att.items.find((i) => i.itemId === t.itemId)?.rovoTask === undefined);
+    const next = fresh.length > 0 ? setRovoTasks(att, fresh) : att;
     const changed = next.items.some((it, i) => it.rovoTask !== att.items[i]?.rovoTask);
     if (changed) {
       await deps.repos.attestations.put(next);
@@ -357,7 +360,7 @@ export async function rovoCreateChecklist(
         type: 'ROVO_TASKS_SET',
         actor,
         at: deps.now(),
-        payload: { bindingId: b.id, itemIds: parsed.map((t) => t.itemId) },
+        payload: { bindingId: b.id, itemIds: fresh.map((t) => t.itemId) },
       });
     }
     return {
@@ -366,6 +369,7 @@ export async function rovoCreateChecklist(
       toVersion: next.toVersion,
       items: next.items.map((i) => ({ itemId: i.itemId, status: i.status, rovoTask: i.rovoTask })),
       implementer: next.implementer,
+      status: changed ? 'CREATED' : 'ALREADY_CREATED',
     };
   } catch (e) {
     return failFrom(e);

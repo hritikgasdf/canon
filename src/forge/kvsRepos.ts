@@ -144,9 +144,9 @@ function createBindingRepo(store: KvsStoreLike): BindingRepo & { load(id: string
 
   const loadAll = async (entries: { value: string }[]): Promise<Binding[]> => {
     const out: Binding[] = [];
-    for (const entry of entries) {
-      const b = await load(entry.value);
-      if (b !== null) out.push(b);
+    for (let i = 0; i < entries.length; i += 20) {
+      const chunk = await Promise.all(entries.slice(i, i + 20).map((e) => load(e.value)));
+      for (const b of chunk) if (b !== null) out.push(b);
     }
     return out;
   };

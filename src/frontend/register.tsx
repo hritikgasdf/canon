@@ -5,7 +5,6 @@ import ForgeReconciler, {
   Box,
   Button,
   DynamicTable,
-  Heading,
   Inline,
   Label,
   Link,
@@ -77,6 +76,12 @@ const procedureLabel = (row: RegisterRow) => (row.restricted ? RESTRICTED_TITLE 
 // Procedure filter key: the page id for visible procedures, one shared key for restricted rows.
 const procedureKey = (row: RegisterRow) => (row.restricted ? RESTRICTED_TITLE : row.pageId);
 
+const bindingText = (r: RegisterRow) =>
+  `${r.restricted ? 'Procedure restricted' : (r.title ?? '—')} v${r.boundVersion ?? '?'}→v${r.currentApproved ?? '?'} ${r.status}`;
+// STATUSES is ordered most urgent first.
+const mostUrgent = (rows: RegisterRow[]): RegisterStatus =>
+  STATUSES.find((s) => rows.some((r) => r.status === s)) ?? 'CLOSED';
+
 const RegisterView = ({ register }: { register: Register }) => {
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [procFilter, setProcFilter] = useState(ALL);
@@ -96,12 +101,16 @@ const RegisterView = ({ register }: { register: Register }) => {
 
   const filtered = useMemo(() => {
     const needle = keyFilter.trim().toUpperCase();
-    return register.rows.filter(
-      (r) =>
-        (statusFilter === ALL || r.status === statusFilter) &&
-        (procFilter === ALL || procedureKey(r) === procFilter) &&
-        (needle === '' || r.issueKey.toUpperCase().includes(needle)),
-    );
+    const groups = new Map<string, RegisterRow[]>();
+    for (const r of register.rows) groups.set(r.issueKey, [...(groups.get(r.issueKey) ?? []), r]);
+    return [...groups.entries()]
+      .filter(
+        ([issueKey, rows]) =>
+          (statusFilter === ALL || rows.some((r) => r.status === statusFilter)) &&
+          (procFilter === ALL || rows.some((r) => procedureKey(r) === procFilter)) &&
+          (needle === '' || issueKey.toUpperCase().includes(needle)),
+      )
+      .map(([issueKey, rows]) => ({ issueKey, rows }));
   }, [register.rows, statusFilter, procFilter, keyFilter]);
 
   return (
@@ -154,31 +163,30 @@ const RegisterView = ({ register }: { register: Register }) => {
           cells: [
             { key: 'issue', content: 'Work item' },
             { key: 'procedure', content: 'Procedure' },
-            { key: 'bound', content: 'Bound' },
-            { key: 'latest', content: 'Latest approved' },
             { key: 'status', content: 'Status' },
             { key: 'boundAt', content: 'Bound at' },
           ],
         }}
-        rows={filtered.map((r) => ({
-          key: r.bindingId,
-          cells: [
-            { key: 'issue', content: <Link href={`/browse/${r.issueKey}`}>{r.issueKey}</Link> },
-            { key: 'procedure', content: procedureLabel(r) },
-            { key: 'bound', content: r.boundVersion !== undefined ? `v${r.boundVersion}` : '—' },
-            { key: 'latest', content: r.currentApproved != null ? `v${r.currentApproved}` : '—' },
-            {
-              key: 'status',
-              content: (
-                <Inline space="space.050" alignBlock="center">
-                  <Lozenge appearance={LOZENGE[r.status]}>{r.status}</Lozenge>
-                  {r.overridden && <Text> · override</Text>}
-                </Inline>
-              ),
-            },
-            { key: 'boundAt', content: r.boundAt.split('T')[0] },
-          ],
-        }))}
+        rows={filtered.map(({ issueKey, rows }) => {
+          const top = mostUrgent(rows);
+          return {
+            key: issueKey,
+            cells: [
+              { key: 'issue', content: <Link href={`/browse/${issueKey}`}>{issueKey}</Link> },
+              { key: 'procedure', content: rows.map(bindingText).join('; ') },
+              {
+                key: 'status',
+                content: (
+                  <Inline space="space.050" alignBlock="center">
+                    <Lozenge appearance={LOZENGE[top]}>{top}</Lozenge>
+                    {rows.some((r) => r.overridden) && <Text> · override</Text>}
+                  </Inline>
+                ),
+              },
+              { key: 'boundAt', content: rows.map((r) => r.boundAt.split('T')[0] ?? '').sort()[0] ?? '' },
+            ],
+          };
+        })}
         rowsPerPage={20}
         emptyView={<Text>No bound work items yet.</Text>}
       />
@@ -248,10 +256,7 @@ const App = () => {
 
   return (
     <Stack space="space.300">
-      <Stack space="space.100">
-        <Heading as="h2">Canon register</Heading>
-        <Text>Every work item bound to a Confluence procedure in this project.</Text>
-      </Stack>
+      <Text>Every work item bound to a Confluence procedure in this project.</Text>
       <Inline space="space.100" alignBlock="center">
         <Button isDisabled={loading} onClick={refresh}>
           Refresh

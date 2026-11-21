@@ -27,7 +27,7 @@ import { needsReattestation } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
-import { eventLabel } from '../domain/evidenceLabels';
+import { actorLabel, eventLabel } from '../domain/evidenceLabels';
 import type {
   Attestation,
   AttestationItem,
@@ -53,14 +53,14 @@ type BindResponse = { ok: true; binding: unknown } | Failure;
 
 // ---- Load state for the issue view ----
 
-type ViewState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; view: IssueView };
+type ViewState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; view: IssueView };
 
 // ---- Helpers ----
 
-const LOZENGE_FOR_STATE: Record<BindingState, { text: string; appearance: 'success' | 'removed' | 'inprogress' | 'moved' }> = {
+const LOZENGE_FOR_STATE: Record<
+  BindingState,
+  { text: string; appearance: 'success' | 'removed' | 'inprogress' | 'moved' }
+> = {
   CURRENT: { text: 'CURRENT', appearance: 'success' },
   SUPERSEDED: { text: 'SUPERSEDED', appearance: 'removed' },
   REATTESTING: { text: 'REATTESTING', appearance: 'inprogress' },
@@ -88,7 +88,15 @@ function selectedValue(option: unknown): string | null {
 
 type OverrideResponse = { ok: true; overridden: true } | Failure;
 
-const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: () => Promise<void> }) => {
+const BreakGlass = ({
+  bindingId,
+  onChanged,
+  onRecorded,
+}: {
+  bindingId: string;
+  onChanged: () => Promise<void>;
+  onRecorded: () => void;
+}) => {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +107,8 @@ const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: ()
     try {
       const res = (await invoke('canonBreakGlass', { bindingId, reason })) as OverrideResponse;
       if (res.ok) {
+        // The row unmounts this form once the override shows, so the parent keeps the notice.
+        onRecorded();
         await onChanged();
       } else {
         setError(res.message);
@@ -129,7 +139,7 @@ const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: ()
           onChange={(e) => setReason(String(e.target.value ?? ''))}
         />
         <Button appearance="warning" isDisabled={busy || reasonTooShort} onClick={() => void override()}>
-          Override gate
+          {busy ? 'Recording…' : 'Override gate'}
         </Button>
       </Inline>
       {reasonTooShort && <Text>{`Reason: at least ${REASON_MIN} characters (${reasonLength}/${REASON_MIN})`}</Text>}
@@ -138,11 +148,10 @@ const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: ()
 };
 
 const BindingStatusRow = ({ binding, onChanged }: { binding: IssueBindingView; onChanged: () => Promise<void> }) => {
-  const title = binding.restricted ? RESTRICTED_LABEL : binding.title ?? binding.pageId;
+  const [recorded, setRecorded] = useState(false);
+  const title = binding.restricted ? RESTRICTED_LABEL : (binding.title ?? binding.pageId);
   const approved =
-    !binding.restricted && typeof binding.currentApproved === 'number'
-      ? ` · approved v${binding.currentApproved}`
-      : '';
+    !binding.restricted && typeof binding.currentApproved === 'number' ? ` · approved v${binding.currentApproved}` : '';
   const lozenge = LOZENGE_FOR_STATE[binding.state];
   return (
     <Stack space="space.050">
@@ -151,6 +160,11 @@ const BindingStatusRow = ({ binding, onChanged }: { binding: IssueBindingView; o
         <Text>{`Bound to v${binding.boundVersion}${approved}`}</Text>
         <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
       </Inline>
+      {recorded && (
+        <SectionMessage appearance="success">
+          <Text>Override recorded. Done is allowed for this version.</Text>
+        </SectionMessage>
+      )}
       {!binding.restricted && binding.override !== undefined && (
         <Inline space="space.100" alignBlock="center">
           <Lozenge appearance="moved">Overridden</Lozenge>
@@ -160,7 +174,7 @@ const BindingStatusRow = ({ binding, onChanged }: { binding: IssueBindingView; o
       {!binding.restricted &&
         binding.override === undefined &&
         (binding.state === 'SUPERSEDED' || binding.state === 'REATTESTING' || binding.state === 'ORPHANED') && (
-          <BreakGlass bindingId={binding.id} onChanged={onChanged} />
+          <BreakGlass bindingId={binding.id} onChanged={onChanged} onRecorded={() => setRecorded(true)} />
         )}
     </Stack>
   );
@@ -182,9 +196,7 @@ const StatusTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Prom
 // ---- Delta tab ----
 
 type DeltaLoadState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; delta: BindingDeltaView };
+  { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; delta: BindingDeltaView };
 
 const DeltaItemRow = ({ item }: { item: DeltaItem }) => (
   <Stack space="space.050">
@@ -244,7 +256,8 @@ const BindingDelta = ({ bindingId }: { bindingId: string }) => {
     );
   }
   // No newer approved version, or nothing changed in it: nothing to show for this binding.
-  if (delta.status === 'NO_CHANGES' || delta.toVersion === null) return <Text>No procedure changes since binding.</Text>;
+  if (delta.status === 'NO_CHANGES' || delta.toVersion === null)
+    return <Text>No procedure changes since binding.</Text>;
 
   return (
     <Stack space="space.100">
@@ -275,7 +288,7 @@ const DeltaTab = ({ view }: { view: IssueView }) => {
 
 // ---- Attest tab ----
 
-type AttestResponse = { ok: true; attestation: Attestation | null } | Failure;
+type AttestResponse = { ok: true; attestation: Attestation | null; names?: Record<string, string> } | Failure;
 
 type AttestLoadState =
   | { kind: 'loading' }
@@ -339,15 +352,26 @@ const AttestItemRow = ({
   );
 };
 
-const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged: () => Promise<void> }) => {
+const BindingAttest = ({
+  bindingId,
+  onChanged,
+  onNotice,
+}: {
+  bindingId: string;
+  onChanged: () => Promise<void>;
+  /** Notices live in AttestTab: a signed-off binding leaves the list and would unmount this row. */
+  onNotice: (message: string | null) => void;
+}) => {
   const [data, setData] = useState<AttestLoadState>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const load = useCallback(async (): Promise<void> => {
     try {
       const attRes = (await invoke('canonAttestation', { bindingId })) as AttestResponse;
       const deltaRes = (await invoke('canonBindingDelta', { bindingId })) as DeltaResponse;
+      if (attRes.ok && attRes.names) setNames(attRes.names);
       if (!attRes.ok) {
         setData({ kind: 'error', message: attRes.message });
       } else if (!deltaRes.ok) {
@@ -370,11 +394,16 @@ const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged:
   ): Promise<void> => {
     setBusy(true);
     setActionError(null);
+    onNotice(null);
     try {
       const res = (await invoke(name, { bindingId, ...payload })) as AttestResponse;
+      if (res.ok && res.names) setNames(res.names);
       // Reload even on refusal: the server state may have moved on.
       await load();
       if (res.ok) {
+        if (name === 'canonAttestSign') {
+          onNotice('Signed off. The work item can now move to Done.');
+        }
         await onChanged();
       } else {
         setActionError(res.message);
@@ -413,7 +442,7 @@ const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged:
       ) : (
         <Stack space="space.100">
           <Text>{`Re-attesting against v${attestation.toVersion}`}</Text>
-          <Text>{`Implementer: ${attestation.implementer}`}</Text>
+          <Text>{`Implementer: ${actorLabel(attestation.implementer, names)}`}</Text>
           {attestation.items.map((item) => (
             <AttestItemRow
               key={item.itemId}
@@ -427,7 +456,7 @@ const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged:
           ))}
           {attestation.sealHash !== undefined ? (
             <SectionMessage appearance="success">
-              <Text>{`Signed off; seal ${attestation.sealHash.slice(0, 12)}`}</Text>
+              <Text>{`Signed off by ${actorLabel(attestation.checker ?? '', names)}; seal ${attestation.sealHash.slice(0, 12)}`}</Text>
             </SectionMessage>
           ) : (
             allResolved && (
@@ -443,16 +472,21 @@ const BindingAttest = ({ bindingId, onChanged }: { bindingId: string; onChanged:
 };
 
 const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Promise<void> }) => {
+  const [notice, setNotice] = useState<string | null>(null);
   // Restricted bindings are skipped; the server would refuse them anyway.
-  const needing = view.bindings.filter(
-    (b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'),
-  );
-  if (needing.length === 0) return <Text>Nothing to re-attest.</Text>;
+  const needing = view.bindings.filter((b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'));
   return (
     <Stack space="space.300">
-      {needing.map((b) => (
-        <BindingAttest key={b.id} bindingId={b.id} onChanged={onChanged} />
-      ))}
+      {notice !== null && (
+        <SectionMessage appearance="success">
+          <Text>{notice}</Text>
+        </SectionMessage>
+      )}
+      {needing.length === 0 ? (
+        <Text>Nothing to re-attest.</Text>
+      ) : (
+        needing.map((b) => <BindingAttest key={b.id} bindingId={b.id} onChanged={onChanged} onNotice={setNotice} />)
+      )}
     </Stack>
   );
 };
@@ -464,11 +498,9 @@ type EvidenceResponse = { ok: true; pack: EvidencePack } | Failure;
 type EvidenceAttachResponse = { ok: true; files: string[] } | Failure;
 
 type EvidenceLoadState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; pack: EvidencePack };
+  { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; pack: EvidencePack };
 
-const EvidenceTab = () => {
+const EvidenceTab = ({ refreshKey }: { refreshKey: number }) => {
   const [state, setState] = useState<EvidenceLoadState>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<string[] | null>(null);
@@ -483,9 +515,10 @@ const EvidenceTab = () => {
     }
   }, []);
 
+  // refreshKey changes after attest/break-glass actions so the seal lines stay current.
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const attach = async () => {
     setBusy(true);
@@ -549,7 +582,7 @@ const EvidenceTab = () => {
                   <Text>
                     {a.sealHash === undefined
                       ? `v${a.toVersion}: not yet signed off`
-                      : `v${a.toVersion}: sealed by ${a.checker ?? '—'} at ${a.checkerSignedAt ?? '—'}`}
+                      : `v${a.toVersion}: sealed by ${a.checker ? actorLabel(a.checker, pack.actorNames ?? {}) : '—'} at ${a.checkerSignedAt ?? '—'}`}
                   </Text>
                   {a.sealHash === undefined ? null : a.sealValid ? (
                     <Lozenge appearance="success">Seal valid</Lozenge>
@@ -581,10 +614,11 @@ const EvidenceTab = () => {
           <Text>{`Attached: ${attachedFiles.join(', ')}`}</Text>
         </SectionMessage>
       )}
-      <Inline space="space.100" alignBlock="end">
+      <Inline space="space.100" alignBlock="center">
         <Button appearance="primary" isDisabled={busy} onClick={() => void attach()}>
-          Attach evidence pack to issue
+          {busy ? 'Attaching…' : 'Attach evidence pack to issue'}
         </Button>
+        {busy && <Spinner />}
       </Inline>
     </Stack>
   );
@@ -642,7 +676,7 @@ const BindSection = ({ onBound }: BindSectionProps) => {
         <Textfield
           name="procedure-query"
           placeholder="Search procedures by title"
-          onChange={(e) => setQuery(String(e.target.value ?? ""))}
+          onChange={(e) => setQuery(String(e.target.value ?? ''))}
         />
         <Button onClick={search}>Search</Button>
       </Inline>
@@ -663,12 +697,12 @@ const BindSection = ({ onBound }: BindSectionProps) => {
 
 // ---- App ----
 
-const ROVO_UNAVAILABLE_TEXT =
-  "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
+const ROVO_UNAVAILABLE_TEXT = "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
 
 const App = () => {
   const [state, setState] = useState<ViewState>({ kind: 'loading' });
   const [rovoUnavailable, setRovoUnavailable] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadView = useCallback(async (): Promise<void> => {
     try {
@@ -684,6 +718,12 @@ const App = () => {
   }, [loadView]);
 
   const needsRedo = state.kind === 'ready' && needsReattestation(state.view.bindings);
+
+  // Attest and break-glass changes reload the view and bump refreshKey so the Evidence tab reloads too.
+  const reloadAll = useCallback(async (): Promise<void> => {
+    await loadView();
+    setRefreshKey((k) => k + 1);
+  }, [loadView]);
 
   const askCanon = async (issueKey: string): Promise<void> => {
     try {
@@ -727,16 +767,16 @@ const App = () => {
             <Tab>Evidence</Tab>
           </TabList>
           <TabPanel>
-            <StatusTab view={state.view} onChanged={loadView} />
+            <StatusTab view={state.view} onChanged={reloadAll} />
           </TabPanel>
           <TabPanel>
             <DeltaTab view={state.view} />
           </TabPanel>
           <TabPanel>
-            <AttestTab view={state.view} onChanged={loadView} />
+            <AttestTab view={state.view} onChanged={reloadAll} />
           </TabPanel>
           <TabPanel>
-            <EvidenceTab />
+            <EvidenceTab refreshKey={refreshKey} />
           </TabPanel>
         </Tabs>
       )}
@@ -748,5 +788,5 @@ const App = () => {
 ForgeReconciler.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );

@@ -45,6 +45,6 @@ describe('eventLabel', () => {
     expect(eventLabel(ev('BOUND', 'sample:priya-nair', { version: 3 }))).toBe('Bound to v3 by Priya Nair (sample)');
     expect(eventLabel(ev('WORK_CLOSED', 'u1'))).toBe('Work closed');
     expect(eventLabel(ev('WORK_REOPENED', 'u1'))).toBe('Work reopened');
-    expect(eventLabel(ev('SIGNED_OFF', 'canon:system'))).toBe('SIGNED_OFF by Canon (system)');
+    expect(eventLabel(ev('SIGNED_OFF', 'canon:system'))).toBe('Signed off by Canon (system) (independent checker)');
   });
 });
