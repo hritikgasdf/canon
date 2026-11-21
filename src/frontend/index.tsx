@@ -20,9 +20,10 @@ import ForgeReconciler, {
   Text,
   Textfield,
 } from '@forge/react';
-import { invoke } from '@forge/bridge';
+import { invoke, rovo } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import { REASON_MIN } from '../domain/limits';
+import { needsReattestation } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -307,6 +308,12 @@ const AttestItemRow = ({
       </Inline>
       {deltaItem && deltaItem.before !== null && <Text>{`Before: ${deltaItem.before}`}</Text>}
       {deltaItem && deltaItem.after !== null && <Text>{`After: ${deltaItem.after}`}</Text>}
+      {item.rovoTask !== undefined && (
+        <Inline space="space.100" alignBlock="center">
+          <Text>{`Task: ${item.rovoTask}`}</Text>
+          <Lozenge appearance="new">Suggested by Canon agent</Lozenge>
+        </Inline>
+      )}
       {item.status === 'PENDING' && (
         <Stack space="space.050">
           <Inline space="space.100" alignBlock="end">
@@ -655,8 +662,12 @@ const BindSection = ({ onBound }: BindSectionProps) => {
 
 // ---- App ----
 
+const ROVO_UNAVAILABLE_TEXT =
+  "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
+
 const App = () => {
   const [state, setState] = useState<ViewState>({ kind: 'loading' });
+  const [rovoUnavailable, setRovoUnavailable] = useState(false);
 
   const loadView = useCallback(async (): Promise<void> => {
     try {
@@ -671,9 +682,35 @@ const App = () => {
     void loadView();
   }, [loadView]);
 
+  const needsRedo = state.kind === 'ready' && needsReattestation(state.view.bindings);
+
+  const askCanon = async (issueKey: string): Promise<void> => {
+    try {
+      await rovo.open({
+        type: 'forge',
+        agentKey: 'canon-agent',
+        agentName: 'Canon Procedure Guard',
+        prompt: `What changed in my procedure for ${issueKey} and what do I need to redo?`,
+      });
+      setRovoUnavailable(false);
+    } catch {
+      setRovoUnavailable(true);
+    }
+  };
+
   return (
     <Stack space="space.300">
-      <Heading as="h3">Canon</Heading>
+      <Inline space="space.100" alignBlock="center">
+        <Heading as="h3">Canon</Heading>
+        {state.kind === 'ready' && needsRedo && (
+          <Button onClick={() => void askCanon(state.view.issueKey)}>Ask Canon</Button>
+        )}
+      </Inline>
+      {rovoUnavailable && (
+        <SectionMessage appearance="information">
+          <Text>{ROVO_UNAVAILABLE_TEXT}</Text>
+        </SectionMessage>
+      )}
       {state.kind === 'error' && (
         <SectionMessage appearance="error">
           <Text>{state.message}</Text>
