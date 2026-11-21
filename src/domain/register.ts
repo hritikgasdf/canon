@@ -38,6 +38,17 @@ const VERIFY_BATCH = 10;
 const statusOf = (b: Binding): RegisterStatus => (b.closedAt ? 'CLOSED' : b.state);
 const naturalCmp = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
 
+/**
+ * A CURRENT open binding whose procedure now has a newer approved version is effectively
+ * superseded (the gate would block Done), even if no supersede was recorded yet — e.g. work
+ * reopened after the approval.
+ */
+function effectiveStatus(b: Binding, p: { currentApproved: number | null } | null): RegisterStatus {
+  const s = statusOf(b);
+  if (s === 'CURRENT' && p?.currentApproved != null && p.currentApproved > b.boundVersion) return 'SUPERSEDED';
+  return s;
+}
+
 export async function buildRegister(deps: RegisterDeps, { projectKey }: { projectKey: string }): Promise<Register> {
   const { repos } = deps;
   const [controlled, openPages] = await Promise.all([
@@ -56,18 +67,14 @@ export async function buildRegister(deps: RegisterDeps, { projectKey }: { projec
   const visible = new Map(
     await Promise.all(pages.map(async (id) => [id, await deps.canView(id).catch(() => false)] as const)),
   );
-  const procs = new Map(
-    await Promise.all(
-      pages.filter((id) => visible.get(id) === true).map(async (id) => [id, await repos.procedures.get(id)] as const),
-    ),
-  );
+  const procs = new Map(await Promise.all(pages.map(async (id) => [id, await repos.procedures.get(id)] as const)));
 
   const rows: RegisterRow[] = bindings.map((b) => {
     const row: RegisterRow = {
       bindingId: b.id,
       issueKey: b.issueKey,
       pageId: b.pageId,
-      status: statusOf(b),
+      status: effectiveStatus(b, procs.get(b.pageId) ?? null),
       boundVersion: b.boundVersion,
       restricted: visible.get(b.pageId) !== true,
       overridden: b.override !== undefined,
@@ -116,10 +123,19 @@ export async function verifyRegisterChains(
         const r = verifyChain(events);
         return r.ok
           ? { issueKey, ok: true, events: events.length }
-          : { issueKey, ok: false, events: events.length, firstBadSeq: r.brokenAt };
+          : {
+              issueKey,
+              ok: false,
+              events: events.length,
+              firstBadSeq: r.brokenAt,
+            };
       }),
     );
     results.push(...batch);
   }
-  return { results, allOk: results.every((r) => r.ok), checked: results.length };
+  return {
+    results,
+    allOk: results.every((r) => r.ok),
+    checked: results.length,
+  };
 }

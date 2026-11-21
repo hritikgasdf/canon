@@ -12,12 +12,18 @@ const proc = (pageId: string, o: Partial<Procedure> = {}): Procedure => ({
   controlled: true,
   policy: 'approved-only',
   approved: [],
-  currentApproved: 4,
+  currentApproved: 3,
   lastSeenVersion: 4,
   ...o,
 });
 
-const bind = (id: string, issueKey: string, pageId: string, state: BindingState = 'CURRENT', o: Partial<Binding> = {}): Binding => ({
+const bind = (
+  id: string,
+  issueKey: string,
+  pageId: string,
+  state: BindingState = 'CURRENT',
+  o: Partial<Binding> = {},
+): Binding => ({
   id,
   issueKey,
   pageId,
@@ -37,6 +43,21 @@ async function seed(procs: Procedure[], bs: Binding[]) {
 const all = async () => true;
 
 describe('buildRegister', () => {
+  it('reports an open CURRENT binding behind the latest approved version as SUPERSEDED', async () => {
+    const repos = await seed(
+      [proc('1', { currentApproved: 5 })],
+      [
+        bind('a', 'CHG-1', '1', 'CURRENT', { boundVersion: 4 }),
+        bind('b', 'CHG-2', '1', 'CURRENT', { boundVersion: 5 }),
+      ],
+    );
+    const r = await buildRegister({ repos, canView: all }, { projectKey: 'CHG' });
+    expect(r.rows.map((x) => [x.issueKey, x.status])).toEqual([
+      ['CHG-1', 'SUPERSEDED'],
+      ['CHG-2', 'CURRENT'],
+    ]);
+  });
+
   it('filters by project prefix', async () => {
     const repos = await seed([proc('1')], [bind('a', 'CHG-1', '1'), bind('b', 'CHGX-1', '1'), bind('c', 'OPS-1', '1')]);
     const r = await buildRegister({ repos, canView: all }, { projectKey: 'CHG' });
@@ -63,9 +84,15 @@ describe('buildRegister', () => {
   });
 
   it('shows details for visible rows', async () => {
-    const repos = await seed([proc('1')], [bind('a', 'CHG-1', '1', 'SUPERSEDED', { supersededBy: 4 })]);
+    const repos = await seed([proc('1', { currentApproved: 4 })], [bind('a', 'CHG-1', '1', 'SUPERSEDED', { supersededBy: 4 })]);
     const row = (await buildRegister({ repos, canView: all }, { projectKey: 'CHG' })).rows[0];
-    expect(row).toMatchObject({ restricted: false, title: 'Title 1', currentApproved: 4, supersededBy: 4, overridden: false });
+    expect(row).toMatchObject({
+      restricted: false,
+      title: 'Title 1',
+      currentApproved: 4,
+      supersededBy: 4,
+      overridden: false,
+    });
   });
 
   it('treats a canView error as restricted', async () => {
@@ -101,17 +128,36 @@ describe('buildRegister', () => {
     );
     const r = await buildRegister({ repos, canView: all }, { projectKey: 'CHG' });
     expect(r.rows.map((x) => x.issueKey)).toEqual([
-      'CHG-9', 'CHG-11', 'CHG-6', 'CHG-5', 'CHG-2', 'CHG-10', 'CHG-3', 'CHG-4',
+      'CHG-9',
+      'CHG-11',
+      'CHG-6',
+      'CHG-5',
+      'CHG-2',
+      'CHG-10',
+      'CHG-3',
+      'CHG-4',
     ]);
   });
 
   it('counts per status', async () => {
     const repos = await seed(
       [proc('1')],
-      [bind('a', 'CHG-1', '1'), bind('b', 'CHG-2', '1'), bind('c', 'CHG-3', '1', 'SUPERSEDED'), bind('d', 'CHG-4', '1', 'CURRENT', { closedAt: NOW })],
+      [
+        bind('a', 'CHG-1', '1'),
+        bind('b', 'CHG-2', '1'),
+        bind('c', 'CHG-3', '1', 'SUPERSEDED'),
+        bind('d', 'CHG-4', '1', 'CURRENT', { closedAt: NOW }),
+      ],
     );
     const { counts } = await buildRegister({ repos, canView: all }, { projectKey: 'CHG' });
-    expect(counts).toEqual({ SUPERSEDED: 1, REATTESTING: 0, ORPHANED: 0, CURRENT: 2, CLEARED: 0, CLOSED: 1 });
+    expect(counts).toEqual({
+      SUPERSEDED: 1,
+      REATTESTING: 0,
+      ORPHANED: 0,
+      CURRENT: 2,
+      CLEARED: 0,
+      CLOSED: 1,
+    });
   });
 
   it('includes bindings on non-controlled pages with open bindings, without duplicates', async () => {
@@ -134,19 +180,38 @@ describe('verifyRegisterChains', () => {
   it('accepts valid chains and detects a tampered one', async () => {
     const repos = createMemoryRepos();
     for (const key of ['CHG-1', 'CHG-2']) {
-      await appendAudit(repos.audit, { issueKey: key, type: 'BOUND', actor: 'a', at: NOW, payload: { n: 1 } });
-      await appendAudit(repos.audit, { issueKey: key, type: 'CLEARED', actor: 'a', at: NOW, payload: { n: 2 } });
+      await appendAudit(repos.audit, {
+        issueKey: key,
+        type: 'BOUND',
+        actor: 'a',
+        at: NOW,
+        payload: { n: 1 },
+      });
+      await appendAudit(repos.audit, {
+        issueKey: key,
+        type: 'CLEARED',
+        actor: 'a',
+        at: NOW,
+        payload: { n: 2 },
+      });
     }
     const ok = await verifyRegisterChains(repos, ['CHG-1', 'CHG-2', 'CHG-1']);
     expect(ok).toMatchObject({ allOk: true, checked: 2 });
 
     const events = await repos.audit.list('CHG-2');
-    const tampered = { ...repos, audit: { ...repos.audit, list: async (k: string) => (k === 'CHG-2' ? [events[0], { ...events[1], actor: 'evil' }] : repos.audit.list(k)),
+    const tampered = {
+      ...repos,
+      audit: {
+        ...repos.audit,
+        list: async (k: string) => (k === 'CHG-2' ? [events[0], { ...events[1], actor: 'evil' }] : repos.audit.list(k)),
       },
     };
     const bad = await verifyRegisterChains(tampered, ['CHG-1', 'CHG-2']);
     expect(bad.allOk).toBe(false);
-    expect(bad.results.find((r) => r.issueKey === 'CHG-2')).toMatchObject({ ok: false, firstBadSeq: 2 });
+    expect(bad.results.find((r) => r.issueKey === 'CHG-2')).toMatchObject({
+      ok: false,
+      firstBadSeq: 2,
+    });
     expect(bad.results.find((r) => r.issueKey === 'CHG-1')?.ok).toBe(true);
   });
 });
