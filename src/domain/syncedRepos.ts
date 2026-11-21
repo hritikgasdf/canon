@@ -7,6 +7,10 @@ type IssueSummary = ReturnType<typeof summarizeIssue>;
  * Wraps repos so every bindings.put is followed by a best-effort sync of the issue's
  * summary. A sync failure is logged and never fails the put: the write is the source of
  * truth, the sync is a mirror.
+ *
+ * The synced canon.gate issue property is a best-effort JQL mirror only. The gate must never
+ * read it: users with edit rights can overwrite issue properties, so the KVS bindings remain
+ * the sole source of truth for gate decisions.
  */
 export function withIssueSync(
   repos: Repos,
