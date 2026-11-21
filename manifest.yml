@@ -192,6 +192,7 @@ permissions:
     - read:jira-work
     - write:jira-work
     - write:page:confluence
+    - read:space:confluence
     - read:jira-user
     - storage:app
 app:
