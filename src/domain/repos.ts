@@ -60,6 +60,7 @@ export interface SettingsRepo {
 export interface SampleStateRepo {
   get(): Promise<SampleState | null>;
   put(s: SampleState): Promise<void>;
+  clear(): Promise<void>;
 }
 
 export interface GateHeartbeatRepo {

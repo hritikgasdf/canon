@@ -142,6 +142,65 @@ export async function loadSampleData(
   return { status: 'LOADED', state };
 }
 
+export class SampleError extends Error {
+  code: 'NOT_LOADED';
+  constructor(code: 'NOT_LOADED', message: string) {
+    super(message);
+    this.name = 'SampleError';
+    this.code = code;
+  }
+}
+
+export type ResetResult = { status: 'RESET'; previous: SampleState; state: SampleState };
+
+/** Retires the current sample run (audit first, then close bindings), frees the page title, then reloads. */
+export async function resetSampleData(deps: SampleDeps, input: { actor: string }): Promise<ResetResult> {
+  const { repos } = deps;
+  const prev = await repos.sample.get();
+  if (prev === null) throw new SampleError('NOT_LOADED', 'Sample data is not loaded.');
+
+  for (const r of ROLES) {
+    const issueKey = prev.issues[r];
+    for (const b of await repos.bindings.listByIssue(issueKey)) {
+      if (b.pageId !== prev.pageId || b.closedAt !== undefined) continue;
+      await appendAudit(repos.audit, {
+        issueKey,
+        type: 'SAMPLE_RESET',
+        actor: input.actor,
+        at: deps.now(),
+        payload: { pageId: prev.pageId, bindingId: b.id },
+      });
+      await repos.bindings.put({ ...b, closedAt: deps.now() });
+    }
+  }
+
+  if (await deps.pageExists(prev.pageId)) {
+    const meta = await deps.getPageMeta(prev.pageId);
+    const body = await deps.fetchBody(prev.pageId, meta.currentVersion);
+    const stamp = deps.now().slice(0, 16).replace('T', ' ');
+    await deps.updatePage(prev.pageId, `${SAMPLE_PAGE_TITLE} (replaced ${stamp} UTC)`, body, meta.currentVersion + 1);
+  }
+  const proc = await repos.procedures.get(prev.pageId);
+  if (proc) await repos.procedures.put({ ...proc, controlled: false });
+
+  await repos.sample.clear();
+
+  const settings = await repos.settings.get();
+  const mapKey = `${prev.projectKey}/Task`;
+  if (settings.autoBind[mapKey] === prev.pageId) {
+    const autoBind = { ...settings.autoBind };
+    delete autoBind[mapKey];
+    await repos.settings.put({ ...settings, autoBind });
+  }
+
+  const { state } = await loadSampleData(deps, {
+    spaceKey: prev.spaceKey,
+    projectKey: prev.projectKey,
+    actor: input.actor,
+  });
+  return { status: 'RESET', previous: prev, state };
+}
+
 export type PublishResult = { status: 'PUBLISHED' | 'ALREADY_PUBLISHED'; version: number };
 
 /** Publishes v4 as a draft. Does not approve: a human approves it in the byline. */

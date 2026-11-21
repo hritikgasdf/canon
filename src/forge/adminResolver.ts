@@ -1,5 +1,5 @@
 // Admin-only resolvers for Canon setup. Logic is dependency-injected; real wiring lives in resolvers.ts.
-import { loadSampleData, publishSampleV4, type SampleDeps } from '../domain/sampleData';
+import { loadSampleData, publishSampleV4, resetSampleData, SampleError, type SampleDeps } from '../domain/sampleData';
 import { runSetupChecks, type SetupDeps } from '../domain/setupChecks';
 import type { Repos } from '../domain/repos';
 import type { Settings } from '../domain/types';
@@ -12,7 +12,7 @@ export type AdminDeps = {
 };
 
 type Req = { context?: { accountId?: string }; payload?: unknown };
-type Fail = { ok: false; error: 'NOT_ADMIN' | 'INTERNAL' | 'INVALID_INPUT'; message: string };
+type Fail = { ok: false; error: 'NOT_ADMIN' | 'INTERNAL' | 'INVALID_INPUT' | 'NOT_LOADED'; message: string };
 
 const KEY_RE = /^[A-Z][A-Z0-9_]{1,19}$/;
 const AUTO_BIND_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,79}(\/[A-Za-z0-9][A-Za-z0-9 _.\-]{0,79})?$/;
@@ -61,6 +61,18 @@ export const publishV4Handler = (req: unknown, deps: AdminDeps) =>
     const actor = (req as Req).context?.accountId;
     if (!actor) return invalid('Missing user context.');
     return { result: await publishSampleV4(deps.sample, { actor }) };
+  });
+
+export const resetSampleHandler = (req: unknown, deps: AdminDeps) =>
+  adminOnly(deps, async () => {
+    const actor = (req as Req).context?.accountId;
+    if (!actor) return invalid('Missing user context.');
+    try {
+      return { result: await resetSampleData(deps.sample, { actor }) };
+    } catch (e) {
+      if (e instanceof SampleError) return { ok: false, error: e.code, message: e.message } as Fail;
+      throw e;
+    }
   });
 
 export const settingsHandler = (_req: unknown, deps: AdminDeps) =>

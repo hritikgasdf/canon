@@ -3,6 +3,7 @@ import api, { route } from '@forge/api';
 import {
   loadSampleHandler,
   publishV4Handler,
+  resetSampleHandler,
   sampleStateHandler,
   saveSettingsHandler,
   setupChecksHandler,
@@ -249,6 +250,7 @@ resolver.define('canonSetupChecks', (req) => setupChecksHandler(req, adminDeps()
 resolver.define('canonSampleState', (req) => sampleStateHandler(req, adminDeps()));
 resolver.define('canonLoadSample', (req) => loadSampleHandler(req, adminDeps()));
 resolver.define('canonPublishV4', (req) => publishV4Handler(req, adminDeps()));
+resolver.define('canonResetSample', (req) => resetSampleHandler(req, adminDeps()));
 resolver.define('canonSettings', (req) => settingsHandler(req, adminDeps()));
 resolver.define('canonSaveSettings', (req) => saveSettingsHandler(req, adminDeps()));
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approveVersion } from '../src/domain/approve';
 import { createMemoryRepos } from '../src/domain/memoryRepos';
-import { loadSampleData, publishSampleV4, SAMPLE_SUMMARIES, type SampleDeps } from '../src/domain/sampleData';
+import { loadSampleData, publishSampleV4, resetSampleData, SAMPLE_SUMMARIES, type SampleDeps } from '../src/domain/sampleData';
 import { SAMPLE_V2_XHTML, SAMPLE_V3_XHTML, SAMPLE_V4_XHTML } from '../src/domain/sampleContent';
 
 function makeDeps() {
@@ -33,11 +33,12 @@ function makeDeps() {
       pages.set(id, { title, bodies: [xhtml] });
       return { id };
     },
-    async updatePage(pageId, _title, xhtml, nextVersion) {
+    async updatePage(pageId, title, xhtml, nextVersion) {
       writes.push(`updatePage:${nextVersion}`);
       const p = pages.get(pageId)!;
       if (nextVersion !== p.bodies.length + 1) throw new Error('version conflict');
       p.bodies.push(xhtml);
+      p.title = title;
     },
     async pageExists(id) {
       return pages.has(id);
@@ -191,5 +192,82 @@ describe('publishSampleV4', () => {
   it('requires loaded sample data', async () => {
     const { deps } = makeDeps();
     await expect(publishSampleV4(deps, { actor: 'admin' })).rejects.toThrow(/not loaded/);
+  });
+});
+
+describe('resetSampleData', () => {
+  async function loaded() {
+    const ctx = makeDeps();
+    const first = await loadSampleData(ctx.deps, input);
+    await publishSampleV4(ctx.deps, { actor: 'admin' });
+    await approveVersion(ctx.repos, ctx.deps.fetchBody, await ctx.deps.getPageMeta(first.state.pageId), {
+      version: 4,
+      actor: 'human-approver',
+      at: ctx.deps.now(),
+    });
+    return { ...ctx, first: (await ctx.repos.sample.get())! };
+  }
+
+  it('creates a fresh v1..v3 page with the new hero CURRENT at v3', async () => {
+    const { deps, repos, pages, first } = await loaded();
+    const r = await resetSampleData(deps, { actor: 'admin' });
+    expect(r.status).toBe('RESET');
+    expect(r.previous).toEqual(first);
+    expect(r.state.pageId).not.toBe(first.pageId);
+    expect(pages.get(r.state.pageId)!.bodies).toHaveLength(3);
+    expect(await repos.bindings.get(`${r.state.issues.hero}.${r.state.pageId}`)).toMatchObject({
+      boundVersion: 3,
+      state: 'CURRENT',
+    });
+    expect(await repos.sample.get()).toEqual(r.state);
+  });
+
+  it('audits SAMPLE_RESET before closing the old hero binding', async () => {
+    const { deps, repos, first } = await loaded();
+    await resetSampleData(deps, { actor: 'admin' });
+    const events = await repos.audit.list(first.issues.hero);
+    const ev = events.find((e) => e.type === 'SAMPLE_RESET')!;
+    expect(ev.payload).toEqual({ pageId: first.pageId, bindingId: `${first.issues.hero}.${first.pageId}` });
+    const b = await repos.bindings.get(`${first.issues.hero}.${first.pageId}`);
+    expect(b?.closedAt).toBeDefined();
+    expect(ev.at < b!.closedAt!).toBe(true);
+  });
+
+  it('renames the old page and uncontrols the old procedure', async () => {
+    const { deps, repos, pages, first } = await loaded();
+    await resetSampleData(deps, { actor: 'admin' });
+    expect(pages.get(first.pageId)!.title).toContain('(replaced 2026-01-01 00:');
+    expect((await repos.procedures.get(first.pageId))?.controlled).toBe(false);
+  });
+
+  it('moves the autoBind mapping to the new page when it pointed at the old one', async () => {
+    const { deps, repos } = await loaded();
+    const r = await resetSampleData(deps, { actor: 'admin' });
+    expect((await repos.settings.get()).autoBind['CHG/Task']).toBe(r.state.pageId);
+  });
+
+  it('keeps an autoBind mapping that points at another page', async () => {
+    const { deps, repos } = await loaded();
+    await repos.settings.put({ ...(await repos.settings.get()), autoBind: { 'CHG/Task': 'admin-page' } });
+    await resetSampleData(deps, { actor: 'admin' });
+    expect((await repos.settings.get()).autoBind['CHG/Task']).toBe('admin-page');
+  });
+
+  it('throws NOT_LOADED without sample state', async () => {
+    const { deps } = makeDeps();
+    await expect(resetSampleData(deps, { actor: 'admin' })).rejects.toMatchObject({ code: 'NOT_LOADED' });
+  });
+
+  it('leaves the binding open when the audit append fails', async () => {
+    const { deps, repos, first } = await loaded();
+    const append = repos.audit.append.bind(repos.audit);
+    repos.audit.append = async (e) => {
+      if (e.type === 'SAMPLE_RESET') throw new Error('audit down');
+      return append(e);
+    };
+    await expect(resetSampleData(deps, { actor: 'admin' })).rejects.toThrow('audit down');
+    const b = await repos.bindings.get(`${first.issues.hero}.${first.pageId}`);
+    expect(b?.closedAt).toBeUndefined();
+    expect(await repos.sample.get()).toEqual(first);
   });
 });
