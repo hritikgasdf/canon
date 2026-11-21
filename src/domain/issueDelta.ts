@@ -12,11 +12,19 @@ export interface DeltaCounts {
   MOVED: number;
 }
 
+/**
+ * CHANGES: a newer version exists and it has at least one delta item (trivial included).
+ * NO_CHANGES: nothing newer to attest against, or the newer version has no delta items.
+ * PROCEDURE_MISSING: Canon has no controlled procedure record for the bound page.
+ */
+export type DeltaStatus = 'CHANGES' | 'NO_CHANGES' | 'PROCEDURE_MISSING';
+
 /** What the Jira issue panel needs to show for one binding. */
 export interface BindingDeltaView {
   bindingId: string;
   pageId: string;
   title: string;
+  status: DeltaStatus;
   /** The version the issue is currently bound to. */
   fromVersion: number;
   /** The version the binding must be re-attested against; null when nothing is newer. */
@@ -45,22 +53,26 @@ export async function getBindingDelta(
   const title = procedure?.title ?? '';
   const fromVersion = binding.boundVersion;
 
+  const empty = (status: DeltaStatus): BindingDeltaView => ({
+    bindingId: binding.id,
+    pageId: binding.pageId,
+    title,
+    status,
+    fromVersion,
+    toVersion: null,
+    items: [],
+    counts: { ADDED: 0, REMOVED: 0, CHANGED: 0, MOVED: 0 },
+    materialCount: 0,
+  });
+
+  // No controlled procedure to diff against: say so, and do not touch Confluence.
+  if (!procedure || !procedure.controlled) return empty('PROCEDURE_MISSING');
+
   // A superseded binding already knows its target. Otherwise the target is the latest approved version.
-  const target = binding.supersededBy ?? procedure?.currentApproved ?? null;
+  const target = binding.supersededBy ?? procedure.currentApproved ?? null;
 
   // Nothing newer to attest against: return an empty view and do not touch Confluence.
-  if (target === null || target <= fromVersion) {
-    return {
-      bindingId: binding.id,
-      pageId: binding.pageId,
-      title,
-      fromVersion,
-      toVersion: null,
-      items: [],
-      counts: { ADDED: 0, REMOVED: 0, CHANGED: 0, MOVED: 0 },
-      materialCount: 0,
-    };
-  }
+  if (target === null || target <= fromVersion) return empty('NO_CHANGES');
 
   // Reuses a stored delta when one exists; otherwise computes and stores it.
   const { delta } = await ensureDelta(repos, fetchBody, binding.pageId, fromVersion, target);
@@ -76,6 +88,7 @@ export async function getBindingDelta(
     bindingId: binding.id,
     pageId: binding.pageId,
     title,
+    status: delta.items.length > 0 ? 'CHANGES' : 'NO_CHANGES',
     fromVersion,
     toVersion: target,
     items: delta.items,

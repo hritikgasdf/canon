@@ -1,8 +1,8 @@
 import Resolver from '@forge/resolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
-import { getBindingDelta } from '../domain/issueDelta';
 import { buildIssueView } from '../domain/issueView';
+import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createKvsRepos } from './kvsRepos';
 
@@ -105,40 +105,9 @@ resolver.define('canonListProcedures', async (req) => {
   }
 });
 
-/**
- * Returns the delta for one binding on the current issue.
- * Order of checks: issue/user context, then payload, then binding lookup (wrong issue = NOT_FOUND),
- * then page visibility (NO_ACCESS). The page must be viewable by the user before any delta is read.
- */
-resolver.define('canonBindingDelta', async (req) => {
-  try {
-    const r = req as IssueReq;
-    const issueKey = r.context?.extension?.issue?.key;
-    const accountId = r.context?.accountId;
-    if (!issueKey || !accountId) return { ok: false, error: 'NO_ACCESS', message: 'Missing issue or user context.' };
-
-    const bindingId = (r.payload as { bindingId?: unknown } | undefined)?.bindingId;
-    if (typeof bindingId !== 'string' || bindingId === '') {
-      return { ok: false, error: 'INVALID_INPUT', message: 'payload.bindingId must be a non-empty string.' };
-    }
-
-    // Load the binding first so we know which page to check. A binding on another issue looks missing.
-    const repos = createKvsRepos();
-    const binding = await repos.bindings.get(bindingId);
-    if (!binding || binding.issueKey !== issueKey) {
-      return { ok: false, error: 'NOT_FOUND', message: 'No such binding on this issue.' };
-    }
-    if (!(await canUserView(binding.pageId))) return { ok: false, error: 'NO_ACCESS', message: 'You do not have access to this page.' };
-
-    const delta = await getBindingDelta(repos, fetchBody, { issueKey, bindingId });
-    return { ok: true, delta };
-  } catch (e) {
-    if (e instanceof Error && e.message === 'NOT_FOUND') {
-      return { ok: false, error: 'NOT_FOUND', message: 'No such binding on this issue.' };
-    }
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
-  }
-});
+resolver.define('canonBindingDelta', (req) =>
+  bindingDeltaHandler(req, { repos: createKvsRepos(), canView: canUserView, fetchBody }),
+);
 
 resolver.define('canonBind', async (req) => {
   try {

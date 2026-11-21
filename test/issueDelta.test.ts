@@ -69,12 +69,30 @@ describe('getBindingDelta', () => {
       bindingId: BINDING,
       pageId: P,
       title: 'SOP PAY-014',
+      status: 'NO_CHANGES',
       fromVersion: 3,
       toVersion: null,
       items: [],
       counts: { ADDED: 0, REMOVED: 0, CHANGED: 0, MOVED: 0 },
       materialCount: 0,
     });
+    expect(fetchBody).not.toHaveBeenCalled();
+  });
+
+  it('returns PROCEDURE_MISSING when no procedure record exists, without touching Confluence', async () => {
+    const repos: Repos = createMemoryRepos();
+    await repos.bindings.put(binding({ state: 'SUPERSEDED', supersededBy: 4 }));
+    const fetchBody = vi.fn<BodyFetcher>(async () => '');
+    const view = await getBindingDelta(repos, fetchBody, { issueKey: ISSUE, bindingId: BINDING });
+    expect(view).toMatchObject({ status: 'PROCEDURE_MISSING', toVersion: null, items: [], materialCount: 0 });
+    expect(fetchBody).not.toHaveBeenCalled();
+  });
+
+  it('returns PROCEDURE_MISSING when the procedure is no longer controlled', async () => {
+    const { repos, fetchBody } = await setup(4);
+    await repos.procedures.put({ ...procedure(4), controlled: false });
+    const view = await getBindingDelta(repos, fetchBody, { issueKey: ISSUE, bindingId: BINDING });
+    expect(view).toMatchObject({ status: 'PROCEDURE_MISSING', toVersion: null, items: [], materialCount: 0 });
     expect(fetchBody).not.toHaveBeenCalled();
   });
 
@@ -97,6 +115,7 @@ describe('getBindingDelta', () => {
   it('computes a missing delta and tallies counts and materialCount', async () => {
     const { repos, fetchBody } = await setup(4);
     const view = await getBindingDelta(repos, fetchBody, { issueKey: ISSUE, bindingId: BINDING });
+    expect(view.status).toBe('CHANGES');
     expect(view.fromVersion).toBe(3);
     expect(view.toVersion).toBe(4);
     expect(view.items.length).toBeGreaterThan(0);

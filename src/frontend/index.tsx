@@ -163,16 +163,20 @@ const BindingDelta = ({ bindingId }: { bindingId: string }) => {
   }
 
   const { delta } = state;
-  // No newer approved version to attest against: nothing to show for this binding.
-  if (delta.toVersion === null) return <Text>No procedure changes since binding.</Text>;
+  if (delta.status === 'PROCEDURE_MISSING') {
+    return (
+      <SectionMessage appearance="warning">
+        <Text>Canon has no record of this procedure.</Text>
+      </SectionMessage>
+    );
+  }
+  // No newer approved version, or nothing changed in it: nothing to show for this binding.
+  if (delta.status === 'NO_CHANGES' || delta.toVersion === null) return <Text>No procedure changes since binding.</Text>;
 
-  const { counts } = delta;
   return (
     <Stack space="space.100">
       <Heading as="h4">{`${delta.title || delta.pageId}: v${delta.fromVersion} → v${delta.toVersion}`}</Heading>
-      <Text>
-        {`${delta.materialCount} material changes (${counts.ADDED} added, ${counts.CHANGED} changed, ${counts.REMOVED} removed, ${counts.MOVED} moved)`}
-      </Text>
+      <Text>{`${delta.materialCount} material changes (${delta.items.length} items in total, trivial ones marked)`}</Text>
       {delta.items.map((item, index) => (
         <DeltaItemRow key={`${item.kind}:${item.path.join('/')}:${index}`} item={item} />
       ))}
@@ -181,15 +185,15 @@ const BindingDelta = ({ bindingId }: { bindingId: string }) => {
 };
 
 const DeltaTab = ({ view }: { view: IssueView }) => {
-  const withDelta = view.bindings.filter(
-    (b) => !b.restricted && b.latestDeltaKey !== null && b.latestDeltaKey !== undefined,
-  );
-  if (withDelta.length === 0) {
+  // Every visible binding is asked: the server decides CHANGES / NO_CHANGES / PROCEDURE_MISSING.
+  // Restricted bindings are skipped; the server would refuse them anyway.
+  const visible = view.bindings.filter((b) => !b.restricted);
+  if (visible.length === 0) {
     return <Text>No procedure changes since binding.</Text>;
   }
   return (
     <Stack space="space.300">
-      {withDelta.map((b) => (
+      {visible.map((b) => (
         <BindingDelta key={b.id} bindingId={b.id} />
       ))}
     </Stack>
