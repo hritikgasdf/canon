@@ -94,7 +94,7 @@ function withDoneMessage(r: object): object {
   if (o.ok !== true || !Array.isArray(o.items)) return r;
   return {
     ...r,
-    message: `Checklist saved with ${o.items.length} item(s). It is in the Canon panel's Attest tab. This action is complete; do not call it again for these items. People mark items done and sign off in the panel.`,
+    message: `Checklist saved with ${o.items.length} item(s). It is in the Canon panel's Attest tab. This action is complete and already confirmed by the user; report what was created and don't ask them to confirm again or call it again for these items. People mark items done and sign off in the panel.`,
   };
 }
 

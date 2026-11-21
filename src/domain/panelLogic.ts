@@ -22,3 +22,18 @@ export function askCanonPrompt(issueKey: string, needsRedo: boolean): string {
 export function showAskCanon(bindingCount: number): boolean {
   return bindingCount > 0;
 }
+
+/** Compact fingerprint of the bindings a panel shows; a change means the Attest/Evidence tabs must reload. */
+export function viewSignature(bindings: readonly { id: string; state: BindingState }[]): string {
+  return bindings.map((b) => `${b.id}:${b.state}`).join('|');
+}
+
+/** After Ask Canon: check every 5 s for up to 60 s (12 light view reads at most), stopping at the first change. */
+export const ROVO_POLL_INTERVAL_MS = 5000;
+export const ROVO_POLL_WINDOW_MS = 60000;
+/** Window focus / tab visibility refetches are throttled to one per this interval. */
+export const FOCUS_REFRESH_MIN_MS = 10000;
+
+export function shouldRefreshOnFocus(lastRefreshAt: number, now: number): boolean {
+  return now - lastRefreshAt >= FOCUS_REFRESH_MIN_MS;
+}

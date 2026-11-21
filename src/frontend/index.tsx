@@ -3,7 +3,7 @@
 // Tab + TabPanel pairs, each rendered by its own component below.
 // Below the tabs, a "Bind procedure" section lets the user search for and
 // bind a controlled procedure to this issue.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ForgeReconciler, {
   Button,
   Heading,
@@ -23,7 +23,15 @@ import ForgeReconciler, {
 import { invoke, rovo } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import { REASON_MIN } from '../domain/limits';
-import { askCanonPrompt, needsReattestation, showAskCanon } from '../domain/panelLogic';
+import {
+  askCanonPrompt,
+  needsReattestation,
+  ROVO_POLL_INTERVAL_MS,
+  ROVO_POLL_WINDOW_MS,
+  shouldRefreshOnFocus,
+  showAskCanon,
+  viewSignature,
+} from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -354,10 +362,13 @@ const AttestItemRow = ({
 
 const BindingAttest = ({
   bindingId,
+  refreshKey,
   onChanged,
   onNotice,
 }: {
   bindingId: string;
+  /** Bumped when the panel learns of outside changes (e.g. a Rovo-created checklist). */
+  refreshKey: number;
   onChanged: () => Promise<void>;
   /** Notices live in AttestTab: a signed-off binding leaves the list and would unmount this row. */
   onNotice: (message: string | null) => void;
@@ -389,7 +400,7 @@ const BindingAttest = ({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const mutate = async (
     name: 'canonAttestStart' | 'canonAttestItem' | 'canonAttestSign',
@@ -474,7 +485,15 @@ const BindingAttest = ({
   );
 };
 
-const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Promise<void> }) => {
+const AttestTab = ({
+  view,
+  refreshKey,
+  onChanged,
+}: {
+  view: IssueView;
+  refreshKey: number;
+  onChanged: () => Promise<void>;
+}) => {
   const [notice, setNotice] = useState<string | null>(null);
   // Restricted bindings are skipped; the server would refuse them anyway.
   const needing = view.bindings.filter((b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'));
@@ -488,7 +507,15 @@ const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Prom
       {needing.length === 0 ? (
         <Text>Nothing to re-attest.</Text>
       ) : (
-        needing.map((b) => <BindingAttest key={b.id} bindingId={b.id} onChanged={onChanged} onNotice={setNotice} />)
+        needing.map((b) => (
+          <BindingAttest
+            key={b.id}
+            bindingId={b.id}
+            refreshKey={refreshKey}
+            onChanged={onChanged}
+            onNotice={setNotice}
+          />
+        ))
       )}
     </Stack>
   );
@@ -728,6 +755,61 @@ const App = () => {
     setRefreshKey((k) => k + 1);
   }, [loadView]);
 
+  // Changes made outside the panel (Rovo creating a checklist or assigning a checker) don't reach it by
+  // themselves. Two light refetches cover that: (1) after Ask Canon, read the view every 5 s for up to
+  // 60 s and reload the tabs at the first change; (2) when the panel regains focus or becomes visible,
+  // reload everything, at most once per 10 s.
+  const signature = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.kind === 'ready') signature.current = viewSignature(state.view.bindings);
+  }, [state]);
+
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopPolling = useCallback((): void => {
+    if (pollTimer.current !== null) clearInterval(pollTimer.current);
+    pollTimer.current = null;
+  }, []);
+  const startPolling = useCallback((): void => {
+    stopPolling();
+    const until = Date.now() + ROVO_POLL_WINDOW_MS;
+    pollTimer.current = setInterval(() => {
+      if (Date.now() > until) {
+        stopPolling();
+        return;
+      }
+      void (async () => {
+        try {
+          const res = (await invoke('canonIssueView')) as ViewResponse;
+          if (!res.ok || viewSignature(res.view.bindings) === signature.current) return;
+          stopPolling();
+          setState({ kind: 'ready', view: res.view });
+          setRefreshKey((k) => k + 1);
+        } catch {
+          // a failed poll is ignored; the next tick or a focus refresh tries again
+        }
+      })();
+    }, ROVO_POLL_INTERVAL_MS);
+  }, [stopPolling]);
+  useEffect(() => stopPolling, [stopPolling]);
+
+  const lastFocusRefresh = useRef(Date.now());
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    const onFocus = (): void => {
+      if (document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (!shouldRefreshOnFocus(lastFocusRefresh.current, now)) return;
+      lastFocusRefresh.current = now;
+      void reloadAll();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [reloadAll]);
+
   const [opening, setOpening] = useState(false);
   const [openHint, setOpenHint] = useState(false);
   const hasBindings = state.kind === 'ready' && showAskCanon(state.view.bindings.length);
@@ -753,6 +835,7 @@ const App = () => {
         prompt: askCanonPrompt(issueKey, needsRedo),
       });
       setRovoUnavailable(false);
+      startPolling();
     } catch {
       setRovoUnavailable(true);
     } finally {
@@ -804,7 +887,7 @@ const App = () => {
             <DeltaTab view={state.view} />
           </TabPanel>
           <TabPanel>
-            <AttestTab view={state.view} onChanged={reloadAll} />
+            <AttestTab view={state.view} refreshKey={refreshKey} onChanged={reloadAll} />
           </TabPanel>
           <TabPanel>
             <EvidenceTab refreshKey={refreshKey} />

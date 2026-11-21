@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { askCanonPrompt, needsReattestation, showAskCanon } from '../src/domain/panelLogic';
+import {
+  askCanonPrompt,
+  needsReattestation,
+  ROVO_POLL_INTERVAL_MS,
+  ROVO_POLL_WINDOW_MS,
+  shouldRefreshOnFocus,
+  showAskCanon,
+  viewSignature,
+} from '../src/domain/panelLogic';
 
 describe('needsReattestation', () => {
   it('is false with no bindings', () => expect(needsReattestation([])).toBe(false));
@@ -29,5 +37,20 @@ describe('Ask Canon', () => {
   it('is offered whenever the item has a binding, including after sign-off', () => {
     expect(showAskCanon(0)).toBe(false);
     expect(showAskCanon(1)).toBe(true);
+  });
+});
+
+describe('panel refresh', () => {
+  it('signature changes when a binding state changes', () => {
+    const a = viewSignature([{ id: 'b1', state: 'SUPERSEDED' }]);
+    expect(viewSignature([{ id: 'b1', state: 'REATTESTING' }])).not.toBe(a);
+    expect(viewSignature([{ id: 'b1', state: 'SUPERSEDED' }])).toBe(a);
+  });
+  it('polls at most 12 times after Ask Canon', () => {
+    expect(ROVO_POLL_WINDOW_MS / ROVO_POLL_INTERVAL_MS).toBe(12);
+  });
+  it('throttles focus refreshes to one per 10 s', () => {
+    expect(shouldRefreshOnFocus(0, 9999)).toBe(false);
+    expect(shouldRefreshOnFocus(0, 10000)).toBe(true);
   });
 });
