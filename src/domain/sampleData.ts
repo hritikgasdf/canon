@@ -116,12 +116,17 @@ export async function loadSampleData(
   }
 
   for (const r of ['hero', 'second'] as const) {
-    if (created[r]) await deps.moveIssueToCategory(issues[r], 'indeterminate');
+    // Bind before moving to In Progress so the auto-bind trigger sees an existing binding and skips.
     await bindTolerant(deps, issues[r], pageId);
+    if (created[r]) await deps.moveIssueToCategory(issues[r], 'indeterminate');
   }
 
   const settings = await repos.settings.get();
-  await repos.settings.put({ ...settings, autoBind: { ...settings.autoBind, [`${projectKey}/Task`]: pageId } });
+  // Never overwrite an admin's existing mapping; only fill it in on a fresh site.
+  const mapKey = `${projectKey}/Task`;
+  if (!Object.prototype.hasOwnProperty.call(settings.autoBind, mapKey)) {
+    await repos.settings.put({ ...settings, autoBind: { ...settings.autoBind, [mapKey]: pageId } });
+  }
 
   await appendAudit(repos.audit, {
     issueKey: issues.hero,

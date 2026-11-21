@@ -117,6 +117,13 @@ describe('loadSampleData', () => {
     expect(await repos.sample.get()).toEqual(r.state);
   });
 
+  it('never overwrites an existing autoBind mapping for the same project/type', async () => {
+    const { deps, repos } = makeDeps();
+    await repos.settings.put({ ...(await repos.settings.get()), autoBind: { 'CHG/Task': 'admin-page' } });
+    await loadSampleData(deps, input);
+    expect((await repos.settings.get()).autoBind).toEqual({ 'CHG/Task': 'admin-page' });
+  });
+
   it('is idempotent: rerun returns ALREADY_LOADED with no new writes', async () => {
     const { deps, writes } = makeDeps();
     const first = await loadSampleData(deps, input);

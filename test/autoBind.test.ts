@@ -92,6 +92,14 @@ describe('handleIssueUpdated', () => {
     expect(second).toEqual({ action: 'SKIPPED', reason: 'ALREADY_BOUND', issueKey: 'OPS-1', pageId: 'P1' });
   });
 
+  it('skips when the issue already has an open binding to a different page', async () => {
+    const repos = await seeded({ Change: 'P1' }, [procedure(), procedure({ pageId: 'P2', title: 'Procedure P2' })]);
+    await repos.bindings.put({ id: 'OPS-1.P2', issueKey: 'OPS-1', pageId: 'P2', boundVersion: 3, boundBy: 'u', boundAt: NOW, state: 'CURRENT' });
+    const result = await handleIssueUpdated(repos, event(), now);
+    expect(result).toEqual({ action: 'SKIPPED', reason: 'BOUND_TO_OTHER_PAGE', issueKey: 'OPS-1', pageId: 'P1' });
+    expect(await repos.bindings.get('OPS-1.P1')).toBeNull();
+  });
+
   it('skips when the mapped page is not a controlled procedure', async () => {
     const repos = await seeded({ Change: 'P1' }, [procedure({ controlled: false })]);
     const result = await handleIssueUpdated(repos, event(), now);
