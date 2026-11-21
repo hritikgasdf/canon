@@ -26,8 +26,11 @@ import { REASON_MIN } from '../domain/limits';
 import {
   askCanonPrompt,
   needsReattestation,
-  ROVO_POLL_INTERVAL_MS,
-  ROVO_POLL_WINDOW_MS,
+  askPollPlan,
+  idlePollPlan,
+  type PollPlan,
+  REFRESH_ON_SELECT_TABS,
+  shouldPollTick,
   shouldRefreshOnFocus,
   showAskCanon,
   viewSignature,
@@ -756,41 +759,61 @@ const App = () => {
   }, [loadView]);
 
   // Changes made outside the panel (Rovo creating a checklist or assigning a checker) don't reach it by
-  // themselves. Two light refetches cover that: (1) after Ask Canon, read the view every 5 s for up to
-  // 60 s and reload the tabs at the first change; (2) when the panel regains focus or becomes visible,
-  // reload everything, at most once per 10 s.
+  // themselves. Three light refetches cover that:
+  // (1) selecting the Attest or Evidence tab reloads the view and that tab;
+  // (2) a poll of the view (one call per tick, skipped while hidden) after Ask Canon (7 s, up to 5 min)
+  //     and while a binding waits as SUPERSEDED (20 s, up to 10 min); it stops at the first change;
+  // (3) window focus / visibility reloads everything, at most once per 10 s.
   const signature = useRef<string | null>(null);
+  const [pollPlan, setPollPlan] = useState<PollPlan>(null);
   useEffect(() => {
-    if (state.kind === 'ready') signature.current = viewSignature(state.view.bindings);
+    if (state.kind !== 'ready') return;
+    const sig = viewSignature(state.view.bindings);
+    if (sig === signature.current) return;
+    signature.current = sig;
+    // A new or changed view decides whether to keep a light watch running.
+    setPollPlan(idlePollPlan(state.view.bindings, Date.now()));
   }, [state]);
 
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stopPolling = useCallback((): void => {
-    if (pollTimer.current !== null) clearInterval(pollTimer.current);
-    pollTimer.current = null;
-  }, []);
-  const startPolling = useCallback((): void => {
-    stopPolling();
-    const until = Date.now() + ROVO_POLL_WINDOW_MS;
-    pollTimer.current = setInterval(() => {
-      if (Date.now() > until) {
-        stopPolling();
+  const pollPlanRef = useRef<PollPlan>(null);
+  pollPlanRef.current = pollPlan;
+  useEffect(() => {
+    if (pollPlan === null) return undefined;
+    let inFlight = false;
+    const timer = setInterval(() => {
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      const step = shouldPollTick(pollPlanRef.current, Date.now(), hidden);
+      if (step === 'stop') {
+        clearInterval(timer);
+        setPollPlan(null);
         return;
       }
+      if (step === 'skip' || inFlight) return;
+      inFlight = true;
       void (async () => {
         try {
           const res = (await invoke('canonIssueView')) as ViewResponse;
-          if (!res.ok || viewSignature(res.view.bindings) === signature.current) return;
-          stopPolling();
-          setState({ kind: 'ready', view: res.view });
-          setRefreshKey((k) => k + 1);
+          if (res.ok && viewSignature(res.view.bindings) !== signature.current) {
+            setState({ kind: 'ready', view: res.view });
+            setRefreshKey((k) => k + 1);
+          }
         } catch {
-          // a failed poll is ignored; the next tick or a focus refresh tries again
+          // a failed poll is ignored; the next tick, a tab click or a focus refresh tries again
+        } finally {
+          inFlight = false;
         }
       })();
-    }, ROVO_POLL_INTERVAL_MS);
-  }, [stopPolling]);
-  useEffect(() => stopPolling, [stopPolling]);
+    }, pollPlan.intervalMs);
+    return () => clearInterval(timer);
+  }, [pollPlan]);
+  const startPolling = useCallback((): void => setPollPlan(askPollPlan(Date.now())), []);
+
+  const onTabChange = useCallback(
+    (index: number): void => {
+      if (REFRESH_ON_SELECT_TABS.includes(index)) void reloadAll();
+    },
+    [reloadAll],
+  );
 
   const lastFocusRefresh = useRef(Date.now());
   useEffect(() => {
@@ -873,7 +896,7 @@ const App = () => {
       )}
       {state.kind === 'loading' && <Text>Loading...</Text>}
       {state.kind === 'ready' && (
-        <Tabs id="canon-tabs">
+        <Tabs id="canon-tabs" onChange={onTabChange}>
           <TabList>
             <Tab>Status</Tab>
             <Tab>Delta</Tab>

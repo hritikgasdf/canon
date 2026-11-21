@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   askCanonPrompt,
   needsReattestation,
-  ROVO_POLL_INTERVAL_MS,
-  ROVO_POLL_WINDOW_MS,
+  askPollPlan,
+  idlePollPlan,
+  REFRESH_ON_SELECT_TABS,
+  shouldPollTick,
   shouldRefreshOnFocus,
   showAskCanon,
   viewSignature,
@@ -46,8 +48,24 @@ describe('panel refresh', () => {
     expect(viewSignature([{ id: 'b1', state: 'REATTESTING' }])).not.toBe(a);
     expect(viewSignature([{ id: 'b1', state: 'SUPERSEDED' }])).toBe(a);
   });
-  it('polls at most 12 times after Ask Canon', () => {
-    expect(ROVO_POLL_WINDOW_MS / ROVO_POLL_INTERVAL_MS).toBe(12);
+  it('after Ask Canon polls every 7 s for 5 min', () => {
+    expect(askPollPlan(1000)).toEqual({ intervalMs: 7000, until: 1000 + 300000 });
+  });
+  it('watches lightly only while a visible binding is SUPERSEDED (no re-attestation started)', () => {
+    expect(idlePollPlan([{ restricted: false, state: 'SUPERSEDED' }], 0)).toEqual({ intervalMs: 20000, until: 600000 });
+    expect(idlePollPlan([{ restricted: false, state: 'REATTESTING' }], 0)).toBeNull();
+    expect(idlePollPlan([{ restricted: true, state: 'SUPERSEDED' }], 0)).toBeNull();
+    expect(idlePollPlan([{ restricted: false, state: 'CURRENT' }], 0)).toBeNull();
+  });
+  it('reads while visible, skips while hidden, stops after the window or with no plan', () => {
+    const plan = { intervalMs: 7000, until: 100 };
+    expect(shouldPollTick(plan, 50, false)).toBe('read');
+    expect(shouldPollTick(plan, 50, true)).toBe('skip');
+    expect(shouldPollTick(plan, 101, false)).toBe('stop');
+    expect(shouldPollTick(null, 0, false)).toBe('stop');
+  });
+  it('refetches when the Attest or Evidence tab is selected, not Status or Delta', () => {
+    expect(REFRESH_ON_SELECT_TABS).toEqual([2, 3]);
   });
   it('throttles focus refreshes to one per 10 s', () => {
     expect(shouldRefreshOnFocus(0, 9999)).toBe(false);
