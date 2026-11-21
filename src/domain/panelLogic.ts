@@ -10,3 +10,15 @@ export function needsReattestation(bindings: readonly ViewBinding[]): boolean {
 
 export const ROVO_UNAVAILABLE_MESSAGE =
   "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
+
+/** The prompt the Ask Canon button sends to the Canon Rovo agent. */
+export function askCanonPrompt(issueKey: string, needsRedo: boolean): string {
+  return needsRedo
+    ? `What changed in my procedure for ${issueKey} and what do I need to redo?`
+    : `Is ${issueKey} clear to close?`;
+}
+
+/** Ask Canon is offered whenever the work item is bound to at least one controlled procedure. */
+export function showAskCanon(bindingCount: number): boolean {
+  return bindingCount > 0;
+}

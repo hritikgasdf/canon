@@ -23,7 +23,7 @@ import ForgeReconciler, {
 import { invoke, rovo } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import { REASON_MIN } from '../domain/limits';
-import { needsReattestation } from '../domain/panelLogic';
+import { askCanonPrompt, needsReattestation, showAskCanon } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -369,8 +369,11 @@ const BindingAttest = ({
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const attRes = (await invoke('canonAttestation', { bindingId })) as AttestResponse;
-      const deltaRes = (await invoke('canonBindingDelta', { bindingId })) as DeltaResponse;
+      // Independent reads: fetch both at once instead of one after the other.
+      const [attRes, deltaRes] = (await Promise.all([
+        invoke('canonAttestation', { bindingId }),
+        invoke('canonBindingDelta', { bindingId }),
+      ])) as [AttestResponse, DeltaResponse];
       if (attRes.ok && attRes.names) setNames(attRes.names);
       if (!attRes.ok) {
         setData({ kind: 'error', message: attRes.message });
@@ -725,17 +728,36 @@ const App = () => {
     setRefreshKey((k) => k + 1);
   }, [loadView]);
 
+  const [opening, setOpening] = useState(false);
+  const [openHint, setOpenHint] = useState(false);
+  const hasBindings = state.kind === 'ready' && showAskCanon(state.view.bindings.length);
+
+  // One click = one request: the button is disabled while Rovo opens, so repeated clicks can't
+  // queue several conversations. If the sidebar hasn't appeared after a few seconds, show how to
+  // open it by hand.
   const askCanon = async (issueKey: string): Promise<void> => {
+    if (opening) return;
+    setOpening(true);
+    setOpenHint(false);
+    const hint = setTimeout(() => setOpenHint(true), 4000);
     try {
+      // isEnabled() is false only when Rovo is off for this site; if the check itself fails, still try to open.
+      if (!(await rovo.isEnabled().catch(() => true))) {
+        setRovoUnavailable(true);
+        return;
+      }
       await rovo.open({
         type: 'forge',
         agentKey: 'canon-agent',
         agentName: 'Canon Procedure Guard',
-        prompt: `What changed in my procedure for ${issueKey} and what do I need to redo?`,
+        prompt: askCanonPrompt(issueKey, needsRedo),
       });
       setRovoUnavailable(false);
     } catch {
       setRovoUnavailable(true);
+    } finally {
+      clearTimeout(hint);
+      setOpening(false);
     }
   };
 
@@ -743,10 +765,19 @@ const App = () => {
     <Stack space="space.300">
       <Inline space="space.100" alignBlock="center">
         <Heading as="h3">Canon</Heading>
-        {state.kind === 'ready' && needsRedo && (
-          <Button onClick={() => void askCanon(state.view.issueKey)}>Ask Canon</Button>
+        {state.kind === 'ready' && hasBindings && (
+          <Button isDisabled={opening} onClick={() => void askCanon(state.view.issueKey)}>
+            {opening ? 'Opening Rovo…' : 'Ask Canon'}
+          </Button>
         )}
       </Inline>
+      {openHint && !rovoUnavailable && (
+        <SectionMessage appearance="information">
+          <Text>
+            If the Rovo chat didn't open, click the Rovo icon in the top bar and choose Canon Procedure Guard.
+          </Text>
+        </SectionMessage>
+      )}
       {rovoUnavailable && (
         <SectionMessage appearance="information">
           <Text>{ROVO_UNAVAILABLE_TEXT}</Text>
