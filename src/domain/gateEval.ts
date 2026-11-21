@@ -40,7 +40,10 @@ function overrideSatisfies(b: Binding, input: GateInput): boolean {
   if (!b.override) return false;
   const proc = input.procedures[b.pageId] ?? null;
   const live = input.liveVersions[b.pageId];
-  if (b.state === 'ORPHANED' || live === 'NOT_FOUND' || proc?.orphaned === true) return true;
+  if (b.state === 'ORPHANED' || live === 'NOT_FOUND' || proc?.orphaned === true) {
+    // Only an override granted while the binding was already orphaned covers an orphan.
+    return b.override.priorState === 'ORPHANED';
+  }
   if (proc === null || typeof live !== 'number') return false;
   const forVersion = b.override.forVersion;
   return typeof forVersion === 'number' && effectiveTarget(b, proc, live) <= forVersion;

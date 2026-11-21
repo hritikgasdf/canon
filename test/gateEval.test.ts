@@ -277,7 +277,13 @@ describe('evaluateGate (full)', () => {
 });
 
 describe('break-glass override', () => {
-  const ov = (forVersion: number | null) => ({ by: 'admin', at: 't', reason: 'r'.repeat(20), forVersion });
+  const ov = (forVersion: number | null, priorState: Binding['state'] = 'SUPERSEDED') => ({
+    by: 'admin',
+    at: 't',
+    reason: 'r'.repeat(20),
+    forVersion,
+    priorState,
+  });
   const superseded = (over: Partial<Binding> = {}) =>
     bind({ state: 'SUPERSEDED', supersededBy: 4, override: ov(4), ...over });
 
@@ -301,12 +307,28 @@ describe('break-glass override', () => {
   it('allows an orphaned binding with an override', () => {
     const d = evaluateGate(
       input({
-        bindings: [bind({ state: 'ORPHANED', override: ov(null) })],
+        bindings: [bind({ state: 'ORPHANED', override: ov(null, 'ORPHANED') })],
         liveVersions: { '1': 'NOT_FOUND' },
       }),
     );
     expect(d.allow).toBe(true);
     expect(d.overrides).toEqual(['b1']);
+  });
+
+  it('an override granted on a SUPERSEDED binding does not cover a later deletion', () => {
+    const d = evaluateGate(
+      input({
+        bindings: [superseded({ override: ov(4, 'SUPERSEDED') })],
+        procedures: { '1': proc({ currentApproved: 4 }) },
+        liveVersions: { '1': 'NOT_FOUND' },
+      }),
+    );
+    expect(d.allow).toBe(false);
+    expect(d.reasons.map((r) => r.code)).toEqual(['ORPHANED']);
+    const o = evaluateGate(
+      input({ bindings: [bind({ state: 'ORPHANED', override: ov(4, 'SUPERSEDED') })], liveVersions: { '1': 'NOT_FOUND' } }),
+    );
+    expect(o.allow).toBe(false);
   });
 
   it('a null forVersion does not cover a live procedure; unverified stays closed', () => {

@@ -5,7 +5,7 @@ import { appendAudit } from './audit';
 import type { Repos } from './repos';
 import type { Binding } from './types';
 
-export type OverrideErrorCode = 'NOT_FOUND' | 'NOT_ADMIN' | 'REASON_REQUIRED' | 'NOT_BLOCKED';
+export type OverrideErrorCode = 'NOT_FOUND' | 'NOT_ADMIN' | 'REASON_REQUIRED' | 'NOT_BLOCKED' | 'ALREADY_OVERRIDDEN';
 
 export class OverrideError extends Error {
   readonly code: OverrideErrorCode;
@@ -45,8 +45,12 @@ export async function breakGlass(
 
   const proc = await repos.procedures.get(b.pageId);
   const forVersion = b.supersededBy ?? proc?.currentApproved ?? null;
-  const next: Binding = { ...b, override: { by: p.actor, at: p.at, reason, forVersion } };
-  await repos.bindings.put(next);
+  if (b.override && (b.override.forVersion === forVersion || (b.state === 'ORPHANED' && b.override.priorState === 'ORPHANED'))) {
+    throw new OverrideError('ALREADY_OVERRIDDEN', 'This binding already has an override covering the current version.');
+  }
+
+  const next: Binding = { ...b, override: { by: p.actor, at: p.at, reason, forVersion, priorState: b.state } };
+  // Audit first: if this throws, the binding is untouched and the gate keeps blocking.
   await appendAudit(repos.audit, {
     issueKey: b.issueKey,
     type: 'BREAK_GLASS',
@@ -54,5 +58,21 @@ export async function breakGlass(
     at: p.at,
     payload: { bindingId: b.id, reason, forVersion, priorState: b.state },
   });
+  try {
+    await repos.bindings.put(next);
+  } catch (e) {
+    try {
+      await appendAudit(repos.audit, {
+        issueKey: b.issueKey,
+        type: 'BREAK_GLASS_FAILED',
+        actor: p.actor,
+        at: p.at,
+        payload: { bindingId: b.id, reason, forVersion, priorState: b.state },
+      });
+    } catch {
+      // best effort
+    }
+    throw e;
+  }
   return next;
 }
