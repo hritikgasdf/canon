@@ -26,6 +26,14 @@ modules:
       handler: index.canonGate
     - key: rovo-get-gate-status
       handler: index.getGateStatus
+    - key: rovo-explain-delta
+      handler: index.explainDelta
+    - key: rovo-approved-proc
+      handler: index.getApprovedProcedure
+    - key: rovo-create-checklist
+      handler: index.createReattestChecklist
+    - key: rovo-assign-checker
+      handler: index.assignChecker
     - key: canon-reconcile-fn
       handler: index.runReconcile
   scheduledTrigger:
@@ -37,13 +45,72 @@ modules:
       name: Get Canon gate status
       function: rovo-get-gate-status
       actionVerb: GET
-      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (CURRENT, SUPERSEDED, NO_BINDING or UNVERIFIED).
+      description: Returns whether the current Jira work item is bound to a Confluence procedure version and whether that procedure has been revised since (overall NO_BINDING, CLEAR, BLOCKED, WARN_ONLY or UNVERIFIED, with per-binding detail).
       inputs:
         note:
           title: Note
           type: string
           required: false
           description: Optional free text; ignored
+    - key: canon-explain-delta
+      name: Explain Canon delta
+      function: rovo-explain-delta
+      actionVerb: GET
+      description: Lists what changed in the bound procedure since this work item was bound, with before/after text.
+      inputs:
+        note:
+          title: Note
+          type: string
+          required: false
+          description: Optional free text; ignored
+    - key: canon-get-approved-procedure
+      name: Get approved procedure
+      function: rovo-approved-proc
+      actionVerb: GET
+      description: Returns the text of the current approved version of the bound procedure. Never returns draft text.
+      inputs:
+        version:
+          title: Version
+          type: integer
+          required: false
+          description: Optional version number; omit for the current approved version
+    - key: canon-create-reattest-checklist
+      name: Create re-attestation checklist
+      function: rovo-create-checklist
+      actionVerb: CREATE
+      description: Creates or updates the re-attestation checklist for this work item with suggested tasks for the given delta items. Use only after the user confirms. Never marks items done.
+      inputs:
+        itemIdsJson:
+          title: Item ids
+          type: string
+          required: true
+          description: JSON array of delta item ids from canon-explain-delta
+        tasksJson:
+          title: Tasks
+          type: string
+          required: true
+          description: JSON array of short task texts in the same order as itemIdsJson
+        bindingId:
+          title: Binding id
+          type: string
+          required: false
+          description: Optional binding id; omit when only one binding needs re-attestation
+    - key: canon-assign-checker
+      name: Assign checker
+      function: rovo-assign-checker
+      actionVerb: UPDATE
+      description: Assigns the independent checker for the re-attestation of this work item. Only the implementer can do this, and only after the user confirms.
+      inputs:
+        checkerAccountId:
+          title: Checker account id
+          type: string
+          required: true
+          description: Atlassian account id of the checker
+        bindingId:
+          title: Binding id
+          type: string
+          required: false
+          description: Optional binding id; omit when only one binding is being re-attested
   rovo:agent:
     - key: canon-agent
       name: Canon Procedure Guard
@@ -52,8 +119,11 @@ modules:
         You are the Canon Procedure Guard for regulated change work.
         When asked about a work item, always call canon-get-gate-status first.
         Explain the returned state in plain language:
-        - CURRENT: the work item is bound to the procedure version that is still current.
-        - SUPERSEDED: the procedure was revised after this work item was bound; say which versions.
+        - CLEAR: Done is not blocked.
+        - BLOCKED: a bound procedure was revised; say which versions. Use canon-explain-delta to describe the changes.
+        - WARN_ONLY: the gate is in warn mode; changes exist but do not block.
+        - Restricted bindings: say the procedure is restricted and reveal nothing about it.
+        - Use canon-get-approved-procedure only for the current approved text.
         - NO_BINDING: the work item is not bound to a Confluence procedure.
         - UNVERIFIED: Canon could not check right now; say so and do not guess.
         Never claim a step is done or complete.
@@ -64,6 +134,10 @@ modules:
         - Which procedure version is this work bound to?
       actions:
         - canon-get-gate-status
+        - canon-explain-delta
+        - canon-get-approved-procedure
+        - canon-create-reattest-checklist
+        - canon-assign-checker
   jira:workflowValidator:
     - key: canon-gate
       name: Canon gate
@@ -108,6 +182,7 @@ permissions:
     - read:confluence-content.summary
     - read:jira-work
     - write:jira-work
+    - read:jira-user
     - storage:app
 app:
   runtime:
