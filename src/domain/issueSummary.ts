@@ -1,6 +1,6 @@
 import type { Binding, BindingState } from './types';
 
-export type IssueSummaryState = 'NONE' | 'ORPHANED' | 'SUPERSEDED' | 'REATTESTING' | 'CURRENT' | 'CLEARED';
+export type IssueSummaryState = 'NONE' | 'ORPHANED' | 'SUPERSEDED' | 'REATTESTING' | 'CURRENT' | 'CLEARED' | 'CLOSED';
 
 export interface IssueSummary {
   state: IssueSummaryState;
@@ -26,9 +26,16 @@ export function summarizeIssue(bindings: Binding[]): IssueSummary {
     return { state: 'NONE', bindingCount: 0, boundVersion: null, targetVersion: null, pageIds };
   }
 
-  let decider: Binding = bindings[0] as Binding;
+  if (bindings.every((b) => b.closedAt !== undefined)) {
+    const first = bindings[0] as Binding;
+    return { state: 'CLOSED', bindingCount: bindings.length, boundVersion: first.boundVersion, targetVersion: null, pageIds };
+  }
+
+  // Closed bindings no longer decide the state while another binding is still open.
+  const live = bindings.filter((b) => b.closedAt === undefined);
+  let decider: Binding = live[0] as Binding;
   let rank = PRECEDENCE.indexOf(decider.state);
-  for (const b of bindings.slice(1)) {
+  for (const b of live.slice(1)) {
     const r = PRECEDENCE.indexOf(b.state);
     if (r < rank) {
       decider = b;

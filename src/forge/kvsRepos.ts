@@ -99,7 +99,7 @@ function createProcedureRepo(store: KvsStoreLike, loadBinding: (id: string) => P
         const bindingId = entry.value;
         const b = await loadBinding(bindingId);
         if (b === null || pageIds.has(b.pageId)) continue;
-        if (OPEN_STATES.includes(b.state)) pageIds.add(b.pageId);
+        if (b.closedAt === undefined && OPEN_STATES.includes(b.state)) pageIds.add(b.pageId);
       }
       return [...pageIds];
     },

@@ -1,8 +1,10 @@
+import { appendAudit } from './audit';
 import { bindIssue, BindError } from './bind';
 import type { Repos } from './repos';
+import type { Binding } from './types';
 
 export type AutoBindResult = {
-  action: 'IGNORED' | 'BOUND' | 'SKIPPED';
+  action: 'IGNORED' | 'BOUND' | 'SKIPPED' | 'CLOSED' | 'REOPENED';
   reason?: string;
   issueKey?: string;
   pageId?: string;
@@ -46,7 +48,44 @@ export async function handleIssueUpdated(
   }
 
   const statusChanged = items.some((item) => isObj(item) && typeof item.field === 'string' && item.field.toLowerCase() === 'status');
+  if (statusChanged && statusCategory === 'done') {
+    const open = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.closedAt === undefined);
+    if (open.length === 0) return { action: 'IGNORED', reason: 'not-start-transition' };
+    const at = now();
+    for (const b of open) await repos.bindings.put({ ...b, closedAt: at });
+    await appendAudit(repos.audit, {
+      issueKey,
+      type: 'WORK_CLOSED',
+      actor: 'canon:system',
+      at,
+      payload: { bindingIds: open.map((b) => b.id), states: open.map((b) => b.state) },
+    });
+    return { action: 'CLOSED', issueKey };
+  }
+
+  let reopened = false;
+  if (statusChanged) {
+    const closed = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.closedAt !== undefined);
+    if (closed.length > 0) {
+      const at = now();
+      for (const b of closed) {
+        const reopenedBinding: Binding = { ...b };
+        delete reopenedBinding.closedAt;
+        await repos.bindings.put(reopenedBinding);
+      }
+      await appendAudit(repos.audit, {
+        issueKey,
+        type: 'WORK_REOPENED',
+        actor: 'canon:system',
+        at,
+        payload: { bindingIds: closed.map((b) => b.id), states: closed.map((b) => b.state) },
+      });
+      reopened = true;
+    }
+  }
+
   if (!statusChanged || statusCategory !== 'indeterminate') {
+    if (reopened) return { action: 'REOPENED', issueKey };
     return { action: 'IGNORED', reason: 'not-start-transition' };
   }
 
