@@ -23,6 +23,7 @@ import ForgeReconciler, {
 import { invoke, rovo } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import { REASON_MIN } from '../domain/limits';
+import { needsReattestation } from '../domain/panelLogic';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -681,11 +682,7 @@ const App = () => {
     void loadView();
   }, [loadView]);
 
-  const needsRedo =
-    state.kind === 'ready' &&
-    state.view.bindings.some(
-      (b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'),
-    );
+  const needsRedo = state.kind === 'ready' && needsReattestation(state.view.bindings);
 
   const askCanon = async (issueKey: string): Promise<void> => {
     try {
