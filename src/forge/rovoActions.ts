@@ -1,8 +1,17 @@
 // Rovo action handlers, called as handler(payload, context). The issue key comes only from
 // payload.context.jira.issueKey (trusted); action inputs are never used for authorisation.
-import { rovoApprovedProcedure, rovoExplainDelta, rovoGateStatus, type RovoDeps } from '../domain/rovo';
+import {
+  rovoApprovedProcedure,
+  rovoAssignChecker,
+  rovoCreateChecklist,
+  rovoExplainDelta,
+  rovoGateStatus,
+  type RovoDeps,
+  type RovoWriteDeps,
+} from '../domain/rovo';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
+import { canUserBrowseIssue } from './permissions';
 
 type Failure = { ok: false; error: string; message: string };
 
@@ -55,4 +64,34 @@ export function getApprovedProcedure(payload: unknown, context?: unknown): Promi
   }
   const version = typeof n === 'number' ? n : undefined;
   return run(payload, (key) => rovoApprovedProcedure(key, version, deps()));
+}
+
+function writeDeps(): RovoWriteDeps {
+  return { ...deps(), canUserBrowseIssue };
+}
+
+// The actor comes only from the trusted invocation context, never from action inputs.
+function extractActor(context: unknown): string | null {
+  const id = (context as { accountId?: unknown } | null | undefined)?.accountId;
+  return typeof id === 'string' && id !== '' ? id : null;
+}
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
+
+export function createReattestChecklist(payload: unknown, context?: unknown): Promise<object> {
+  const actor = extractActor(context);
+  if (actor === null) return Promise.resolve(noContext());
+  const p = (payload ?? {}) as { itemIdsJson?: unknown; tasksJson?: unknown; bindingId?: unknown };
+  return run(payload, (key) =>
+    rovoCreateChecklist(key, actor, { bindingId: str(p.bindingId), itemIdsJson: p.itemIdsJson, tasksJson: p.tasksJson }, writeDeps()),
+  );
+}
+
+export function assignChecker(payload: unknown, context?: unknown): Promise<object> {
+  const actor = extractActor(context);
+  if (actor === null) return Promise.resolve(noContext());
+  const p = (payload ?? {}) as { checkerAccountId?: unknown; bindingId?: unknown };
+  return run(payload, (key) =>
+    rovoAssignChecker(key, actor, { bindingId: str(p.bindingId), checkerAccountId: p.checkerAccountId }, writeDeps()),
+  );
 }
