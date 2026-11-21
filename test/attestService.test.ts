@@ -111,13 +111,29 @@ describe('attestService', () => {
     expect((await repos.bindings.get(B))!.state).toBe('REATTESTING');
   });
 
-  it('someone who attested an item cannot sign', async () => {
+  it('someone who did a DONE item cannot sign', async () => {
+    const { repos, fetchBody } = await setup();
+    const a = await startReattestation(repos, fetchBody, { ...ref, actor: 'impl', at: AT });
+    await attestItem(repos, { ...ref, itemId: a.items[0].itemId, action: 'NOT_MATERIAL', note: REASON, actor: 'rev', at: AT });
+    // 'impl' did the remaining DONE items (if any); a DONE item by 'impl' blocks them as signer too.
+    await doneAll(repos, 'impl');
+    const att = (await getAttestation(repos, ref))!;
+    const doneBy = att.items.find((i) => i.status === 'DONE')?.by;
+    expect(doneBy).toBe('impl');
+    expect(await code(signOff(repos, { ...ref, actor: doneBy!, at: AT }))).toBe('SELF_SIGN');
+    expect((await getAttestation(repos, ref))!.sealHash).toBeUndefined();
+  });
+
+  it('a checker who marked an item not material can still sign', async () => {
     const { repos, fetchBody } = await setup();
     const a = await startReattestation(repos, fetchBody, { ...ref, actor: 'impl', at: AT });
     await attestItem(repos, { ...ref, itemId: a.items[0].itemId, action: 'NOT_MATERIAL', note: REASON, actor: 'rev', at: AT });
     await doneAll(repos, 'impl');
-    expect(await code(signOff(repos, { ...ref, actor: 'rev', at: AT }))).toBe('SELF_SIGN');
-    expect((await getAttestation(repos, ref))!.sealHash).toBeUndefined();
+    const sealed = await signOff(repos, { ...ref, actor: 'rev', at: AT });
+    expect(sealed.sealHash).toBeTruthy();
+    expect(sealed.checker).toBe('rev');
+    expect(sealed.items[0].status).toBe('NOT_MATERIAL');
+    expect((await repos.bindings.get(B))!.state).toBe('CLEARED');
   });
 
   it('signing with open items is rejected', async () => {

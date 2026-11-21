@@ -101,10 +101,11 @@ export async function attestItem(
 export async function signOff(repos: Repos, p: Ref & { actor: string; at: string }): Promise<Attestation> {
   const { b, att } = await loadOpen(repos, p);
   const independent = (await repos.settings.get()).requireIndependentApprover;
-  if (independent && (p.actor === att.implementer || att.items.some((i) => i.by === p.actor))) {
+  // NOT_MATERIAL items are the checker's own judgement, so only DONE items count against the signer.
+  if (independent && (p.actor === att.implementer || att.items.some((i) => i.status === 'DONE' && i.by === p.actor))) {
     throw new AttestError(
       'SELF_SIGN',
-      'The signer must be independent of the implementer and of everyone who attested an item.',
+      'The signer must be independent of the implementer and of everyone who completed an item.',
     );
   }
   if (att.items.some((i) => i.status === 'PENDING')) {
