@@ -1,4 +1,6 @@
+import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
+import { breakGlassHandler } from './overrideResolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
 import { buildIssueView } from '../domain/issueView';
@@ -120,6 +122,26 @@ resolver.define('canonAttestation', (req) => attestationHandler(req, attestDeps(
 resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps()));
 resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
 resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
+
+async function isProjectAdmin(projectKey: string): Promise<boolean> {
+  const res = await api
+    .asUser()
+    .requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=ADMINISTER_PROJECTS`, {
+      headers: { Accept: 'application/json' },
+    });
+  if (!res.ok) return false;
+  const j = (await res.json()) as { permissions?: { ADMINISTER_PROJECTS?: { havePermission?: unknown } } };
+  return j.permissions?.ADMINISTER_PROJECTS?.havePermission === true;
+}
+
+resolver.define('canonBreakGlass', (req) =>
+  breakGlassHandler(req, {
+    repos: createAppRepos(),
+    canView: canUserView,
+    isProjectAdmin,
+    now: () => new Date().toISOString(),
+  }),
+);
 
 resolver.define('canonBind', async (req) => {
   try {

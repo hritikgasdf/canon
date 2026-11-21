@@ -275,3 +275,50 @@ describe('evaluateGate (full)', () => {
     expect(evaluateGate(bad)).toEqual({ allow: false, warnOnly: false, reasons: [], message: GATE_FAIL_CLOSED });
   });
 });
+
+describe('break-glass override', () => {
+  const ov = (forVersion: number | null) => ({ by: 'admin', at: 't', reason: 'r'.repeat(20), forVersion });
+  const superseded = (over: Partial<Binding> = {}) =>
+    bind({ state: 'SUPERSEDED', supersededBy: 4, override: ov(4), ...over });
+
+  it('allows when the target is covered by the override and lists it', () => {
+    const d = evaluateGate(
+      input({ bindings: [superseded()], procedures: { '1': proc({ currentApproved: 4 }) }, liveVersions: { '1': 4 } }),
+    );
+    expect(d.allow).toBe(true);
+    expect(d.overrides).toEqual(['b1']);
+  });
+
+  it('blocks again when a newer version is approved after the override', () => {
+    const d = evaluateGate(
+      input({ bindings: [superseded()], procedures: { '1': proc({ currentApproved: 5 }) }, liveVersions: { '1': 5 } }),
+    );
+    expect(d.allow).toBe(false);
+    expect(d.reasons.map((r) => r.code)).toEqual(['SUPERSEDED']);
+    expect(d.overrides).toBeUndefined();
+  });
+
+  it('allows an orphaned binding with an override', () => {
+    const d = evaluateGate(
+      input({
+        bindings: [bind({ state: 'ORPHANED', override: ov(null) })],
+        liveVersions: { '1': 'NOT_FOUND' },
+      }),
+    );
+    expect(d.allow).toBe(true);
+    expect(d.overrides).toEqual(['b1']);
+  });
+
+  it('a null forVersion does not cover a live procedure; unverified stays closed', () => {
+    const d = evaluateGate(
+      input({
+        bindings: [superseded({ override: ov(null) })],
+        procedures: { '1': proc({ currentApproved: 4 }) },
+        liveVersions: { '1': 4 },
+      }),
+    );
+    expect(d.allow).toBe(false);
+    const u = evaluateGate(input({ bindings: [superseded()], procedures: { '1': null }, liveVersions: { '1': null } }));
+    expect(u.allow).toBe(false);
+  });
+});

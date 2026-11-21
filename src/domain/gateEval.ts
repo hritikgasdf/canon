@@ -18,7 +18,7 @@ export type GateReason = {
   openItems?: number;
 };
 
-export type GateDecision = { allow: boolean; warnOnly: boolean; reasons: GateReason[]; message?: string };
+export type GateDecision = { allow: boolean; warnOnly: boolean; reasons: GateReason[]; message?: string; overrides?: string[] };
 
 export const GATE_FAIL_CLOSED =
   'Canon could not verify the procedure version, so this transition is blocked. Try again; nothing was changed.';
@@ -33,6 +33,17 @@ export function effectiveTarget(_b: Binding, proc: Procedure, live: number): num
   if (proc.policy === 'every-major') effective = Math.max(effective, live);
   // approved-only with live > currentApproved is a draft pending approval: informational, never blocks.
   return effective;
+}
+
+/** True when a break-glass override on the binding covers the current state of its procedure. */
+function overrideSatisfies(b: Binding, input: GateInput): boolean {
+  if (!b.override) return false;
+  const proc = input.procedures[b.pageId] ?? null;
+  const live = input.liveVersions[b.pageId];
+  if (b.state === 'ORPHANED' || live === 'NOT_FOUND' || proc?.orphaned === true) return true;
+  if (proc === null || typeof live !== 'number') return false;
+  const forVersion = b.override.forVersion;
+  return typeof forVersion === 'number' && effectiveTarget(b, proc, live) <= forVersion;
 }
 
 function evaluateBinding(
@@ -82,18 +93,24 @@ const failClosed = (): GateDecision => ({ allow: false, warnOnly: false, reasons
 export function evaluateGate(input: GateInput): GateDecision {
   try {
     const reasons: GateReason[] = [];
+    const overrides: string[] = [];
     for (const b of input.bindings) {
+      if (overrideSatisfies(b, input)) {
+        overrides.push(b.id);
+        continue;
+      }
       const r = evaluateBinding(b, input);
       if (r) reasons.push(r);
     }
     const blocking = reasons.filter((r) => r.code !== 'PENDING_APPROVAL_IGNORED');
-    if (blocking.length === 0) return { allow: true, warnOnly: false, reasons };
+    const extra = overrides.length > 0 ? { overrides } : {};
+    if (blocking.length === 0) return { allow: true, warnOnly: false, reasons, ...extra };
 
     const message = blocking.some((r) => r.code === 'UNVERIFIED')
       ? GATE_FAIL_CLOSED
       : blocking.map((r) => sentence(r, input.issueKey)).join(' ');
-    if (input.mode === 'warn') return { allow: true, warnOnly: true, reasons, message };
-    return { allow: false, warnOnly: false, reasons, message };
+    if (input.mode === 'warn') return { allow: true, warnOnly: true, reasons, message, ...extra };
+    return { allow: false, warnOnly: false, reasons, message, ...extra };
   } catch {
     return failClosed();
   }

@@ -82,7 +82,54 @@ function selectedValue(option: unknown): string | null {
 
 // ---- Status tab ----
 
-const BindingStatusRow = ({ binding }: { binding: IssueBindingView }) => {
+type OverrideResponse = { ok: true; overridden: true } | Failure;
+
+const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: () => Promise<void> }) => {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const override = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = (await invoke('canonBreakGlass', { bindingId, reason })) as OverrideResponse;
+      if (res.ok) {
+        await onChanged();
+      } else {
+        setError(res.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Override failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack space="space.050">
+      <Heading as="h5">Break glass (project admins)</Heading>
+      {error !== null && (
+        <SectionMessage appearance="error">
+          <Text>{error}</Text>
+        </SectionMessage>
+      )}
+      <Inline space="space.100" alignBlock="end">
+        <Textfield
+          name={`override-reason-${bindingId}`}
+          placeholder="Reason (at least 20 characters)"
+          value={reason}
+          onChange={(e) => setReason(String(e.target.value ?? ''))}
+        />
+        <Button appearance="warning" isDisabled={busy} onClick={() => void override()}>
+          Override gate
+        </Button>
+      </Inline>
+    </Stack>
+  );
+};
+
+const BindingStatusRow = ({ binding, onChanged }: { binding: IssueBindingView; onChanged: () => Promise<void> }) => {
   const title = binding.restricted ? RESTRICTED_LABEL : binding.title ?? binding.pageId;
   const approved =
     !binding.restricted && typeof binding.currentApproved === 'number'
@@ -96,18 +143,29 @@ const BindingStatusRow = ({ binding }: { binding: IssueBindingView }) => {
         <Text>{`Bound to v${binding.boundVersion}${approved}`}</Text>
         <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
       </Inline>
+      {!binding.restricted && binding.override !== undefined && (
+        <Inline space="space.100" alignBlock="center">
+          <Lozenge appearance="moved">Overridden</Lozenge>
+          <Text>{binding.override.reason}</Text>
+        </Inline>
+      )}
+      {!binding.restricted &&
+        binding.override === undefined &&
+        (binding.state === 'SUPERSEDED' || binding.state === 'REATTESTING' || binding.state === 'ORPHANED') && (
+          <BreakGlass bindingId={binding.id} onChanged={onChanged} />
+        )}
     </Stack>
   );
 };
 
-const StatusTab = ({ view }: { view: IssueView }) => {
+const StatusTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Promise<void> }) => {
   if (view.bindings.length === 0) {
     return <Text>No controlled procedure bound.</Text>;
   }
   return (
     <Stack space="space.200">
       {view.bindings.map((b) => (
-        <BindingStatusRow key={b.id} binding={b} />
+        <BindingStatusRow key={b.id} binding={b} onChanged={onChanged} />
       ))}
     </Stack>
   );
@@ -491,7 +549,7 @@ const App = () => {
             <Tab>Attest</Tab>
           </TabList>
           <TabPanel>
-            <StatusTab view={state.view} />
+            <StatusTab view={state.view} onChanged={loadView} />
           </TabPanel>
           <TabPanel>
             <DeltaTab view={state.view} />
