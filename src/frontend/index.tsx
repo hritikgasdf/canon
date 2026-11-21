@@ -22,6 +22,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
+import { REASON_MIN } from '../domain/override';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
 import type { BindingDeltaView } from '../domain/issueDelta';
 import type { EvidencePack } from '../domain/evidence';
@@ -107,6 +108,9 @@ const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: ()
     }
   };
 
+  const reasonLength = reason.trim().length;
+  const reasonTooShort = reasonLength < REASON_MIN;
+
   return (
     <Stack space="space.050">
       <Heading as="h5">Break glass (project admins)</Heading>
@@ -122,10 +126,11 @@ const BreakGlass = ({ bindingId, onChanged }: { bindingId: string; onChanged: ()
           value={reason}
           onChange={(e) => setReason(String(e.target.value ?? ''))}
         />
-        <Button appearance="warning" isDisabled={busy} onClick={() => void override()}>
+        <Button appearance="warning" isDisabled={busy || reasonTooShort} onClick={() => void override()}>
           Override gate
         </Button>
       </Inline>
+      {reasonTooShort && <Text>{`Reason: at least ${REASON_MIN} characters (${reasonLength}/${REASON_MIN})`}</Text>}
     </Stack>
   );
 };
