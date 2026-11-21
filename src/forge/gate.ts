@@ -1,7 +1,7 @@
 import { GATE_FAIL_CLOSED, type GateDecision } from '../domain/gateEval';
 import { runCanonGate } from '../domain/gateRun';
 import { fetchBody, getPageMeta } from './confluence';
-import { createKvsRepos } from './kvsRepos';
+import { createAppRepos } from './kvsRepos';
 
 export type GateResult = { result: boolean; errorMessage?: string };
 
@@ -78,7 +78,7 @@ export async function runGate(args: unknown, deps: GateDeps): Promise<GateResult
 }
 
 export async function canonGate(args: unknown): Promise<GateResult> {
-  const repos = createKvsRepos();
+  const repos = createAppRepos();
   return runGate(args, {
     gate: (issueKey) =>
       runCanonGate(issueKey, { repos, getPageMeta, fetchBody, now: () => new Date().toISOString() }),

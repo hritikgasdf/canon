@@ -72,6 +72,20 @@ modules:
       projectTypes:
         - company-managed
         - team-managed
+  jira:entityProperty:
+    - key: canon-gate-property
+      entityType: issue
+      propertyKey: canon.gate
+      values:
+        - path: state
+          type: string
+          searchAlias: canonState
+        - path: boundVersion
+          type: number
+          searchAlias: canonBoundVersion
+        - path: bindingCount
+          type: number
+          searchAlias: canonBindingCount
   trigger:
     - key: canon-page-events
       function: page-events
@@ -93,6 +107,7 @@ permissions:
     - read:page:confluence
     - read:confluence-content.summary
     - read:jira-work
+    - write:jira-work
     - storage:app
 app:
   runtime:

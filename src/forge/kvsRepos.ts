@@ -1,4 +1,6 @@
 import kvs, { WhereConditions, type BeginsWithClause } from '@forge/kvs';
+import { withIssueSync } from '../domain/syncedRepos';
+import { putCanonGateProperty } from './issueProperty';
 import {
   CONTROLLED_LIST_CAP,
   type AttestationRepo,
@@ -240,4 +242,9 @@ export function createKvsRepos(store: KvsStoreLike = kvs): Repos {
     audit: createAuditRepo(store),
     settings: createSettingsRepo(store),
   };
+}
+
+/** Production repos: KVS-backed, with every binding write mirrored to the canon.gate issue property. */
+export function createAppRepos(): Repos {
+  return withIssueSync(createKvsRepos(), putCanonGateProperty, console.log);
 }
