@@ -11,6 +11,7 @@ import ForgeReconciler, {
   Lozenge,
   SectionMessage,
   Select,
+  Spinner,
   Stack,
   Tab,
   TabList,
@@ -22,13 +23,16 @@ import ForgeReconciler, {
 import { invoke } from '@forge/bridge';
 import { RESTRICTED_LABEL } from '../domain/issueView';
 import type { IssueBindingView, IssueView } from '../domain/issueView';
-import type { BindingState } from '../domain/types';
+import type { BindingDeltaView } from '../domain/issueDelta';
+import type { BindingState, DeltaItem, DeltaKind } from '../domain/types';
 
 // ---- Typed backend response shapes (mirror src/forge/resolvers.ts) ----
 
 type Failure = { ok: false; error: string; message: string };
 
 type ViewResponse = { ok: true; view: IssueView } | Failure;
+
+type DeltaResponse = { ok: true; delta: BindingDeltaView } | Failure;
 
 type ProcedureSummary = { pageId: string; title: string; currentApproved: number };
 
@@ -51,6 +55,13 @@ const LOZENGE_FOR_STATE: Record<BindingState, { text: string; appearance: 'succe
   REATTESTING: { text: 'REATTESTING', appearance: 'inprogress' },
   CLEARED: { text: 'CLEARED', appearance: 'success' },
   ORPHANED: { text: 'ORPHANED', appearance: 'moved' },
+};
+
+const LOZENGE_FOR_KIND: Record<DeltaKind, { appearance: 'new' | 'inprogress' | 'removed' | 'default' }> = {
+  ADDED: { appearance: 'new' },
+  CHANGED: { appearance: 'inprogress' },
+  REMOVED: { appearance: 'removed' },
+  MOVED: { appearance: 'default' },
 };
 
 /** Extracts the selected option's value from a Forge Select change event. */
@@ -90,6 +101,100 @@ const StatusTab = ({ view }: { view: IssueView }) => {
     <Stack space="space.200">
       {view.bindings.map((b) => (
         <BindingStatusRow key={b.id} binding={b} />
+      ))}
+    </Stack>
+  );
+};
+
+// ---- Delta tab ----
+
+type DeltaLoadState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; delta: BindingDeltaView };
+
+const DeltaItemRow = ({ item }: { item: DeltaItem }) => (
+  <Stack space="space.050">
+    <Inline space="space.100" alignBlock="center">
+      <Lozenge appearance={LOZENGE_FOR_KIND[item.kind].appearance}>{item.kind}</Lozenge>
+      <Text>{item.path.join(' › ')}</Text>
+      {item.trivial && <Lozenge>trivial</Lozenge>}
+    </Inline>
+    {item.before !== null && <Text>{`Before: ${item.before}`}</Text>}
+    {item.after !== null && <Text>{`After: ${item.after}`}</Text>}
+    {item.hints.length > 0 && (
+      <Inline space="space.050">
+        {item.hints.map((hint) => (
+          <Lozenge key={hint}>{hint}</Lozenge>
+        ))}
+      </Inline>
+    )}
+  </Stack>
+);
+
+const BindingDelta = ({ bindingId }: { bindingId: string }) => {
+  const [state, setState] = useState<DeltaLoadState>({ kind: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = (await invoke('canonBindingDelta', { bindingId })) as DeltaResponse;
+        if (cancelled) return;
+        setState(res.ok ? { kind: 'ready', delta: res.delta } : { kind: 'error', message: res.message });
+      } catch (e) {
+        if (cancelled) return;
+        setState({ kind: 'error', message: e instanceof Error ? e.message : 'Could not load delta.' });
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [bindingId]);
+
+  if (state.kind === 'loading') return <Spinner />;
+  if (state.kind === 'error') {
+    return (
+      <SectionMessage appearance="error">
+        <Text>{state.message}</Text>
+      </SectionMessage>
+    );
+  }
+
+  const { delta } = state;
+  if (delta.status === 'PROCEDURE_MISSING') {
+    return (
+      <SectionMessage appearance="warning">
+        <Text>Canon has no record of this procedure.</Text>
+      </SectionMessage>
+    );
+  }
+  // No newer approved version, or nothing changed in it: nothing to show for this binding.
+  if (delta.status === 'NO_CHANGES' || delta.toVersion === null) return <Text>No procedure changes since binding.</Text>;
+
+  return (
+    <Stack space="space.100">
+      <Heading as="h4">{`${delta.title || delta.pageId}: v${delta.fromVersion} → v${delta.toVersion}`}</Heading>
+      <Text>{`${delta.materialCount} material changes (${delta.items.length} items in total, trivial ones marked)`}</Text>
+      {delta.items.map((item, index) => (
+        <DeltaItemRow key={`${item.kind}:${item.path.join('/')}:${index}`} item={item} />
+      ))}
+    </Stack>
+  );
+};
+
+const DeltaTab = ({ view }: { view: IssueView }) => {
+  // Every visible binding is asked: the server decides CHANGES / NO_CHANGES / PROCEDURE_MISSING.
+  // Restricted bindings are skipped; the server would refuse them anyway.
+  const visible = view.bindings.filter((b) => !b.restricted);
+  if (visible.length === 0) {
+    return <Text>No procedure changes since binding.</Text>;
+  }
+  return (
+    <Stack space="space.300">
+      {visible.map((b) => (
+        <BindingDelta key={b.id} bindingId={b.id} />
       ))}
     </Stack>
   );
@@ -197,9 +302,13 @@ const App = () => {
         <Tabs id="canon-tabs">
           <TabList>
             <Tab>Status</Tab>
+            <Tab>Delta</Tab>
           </TabList>
           <TabPanel>
             <StatusTab view={state.view} />
+          </TabPanel>
+          <TabPanel>
+            <DeltaTab view={state.view} />
           </TabPanel>
         </Tabs>
       )}

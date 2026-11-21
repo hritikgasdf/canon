@@ -2,6 +2,7 @@ import Resolver from '@forge/resolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
 import { buildIssueView } from '../domain/issueView';
+import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createKvsRepos } from './kvsRepos';
 
@@ -103,6 +104,10 @@ resolver.define('canonListProcedures', async (req) => {
     return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
   }
 });
+
+resolver.define('canonBindingDelta', (req) =>
+  bindingDeltaHandler(req, { repos: createKvsRepos(), canView: canUserView, fetchBody }),
+);
 
 resolver.define('canonBind', async (req) => {
   try {
