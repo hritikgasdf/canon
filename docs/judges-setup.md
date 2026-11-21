@@ -50,3 +50,10 @@ The same page edits gate settings (Block/Warn, revision policy, auto-bind mappin
 - **Break-glass override** and **Attach evidence pack**: project admins, meaning the user has *Administer Projects* on the project (normally through the project's **Administrators** role: Project settings → Access / People → add the user with role *Administrators*). Jira admins are accepted too. In Jira Cloud, being a Jira admin does not by itself grant *Administer Projects*.
 - **Canon register:** open the project, then the top tab bar → **More → Canon register** (it is not in the sidebar).
 - **Reset sample data** (Canon setup → Sample data): retires the current sample work items (their bindings are closed with a `SAMPLE_RESET` audit event), renames the old sample page, and loads a fresh v1–v3 page with new work items, so the v3 → v4 demo can be replayed.
+
+## 9. Restricted procedures (by design)
+The gate checks **the procedure version**, not whether the person clicking Done can open the page. It runs as the Canon app:
+- Work bound to the **current** approved version may move to Done even if the user can't open the procedure. The panel shows *Procedure restricted* (no title, versions or changes).
+- If a **newer approved version** exists, Done is **blocked** for everyone. The message names no procedure, and re-attestation needs someone who can read the changes.
+- If **Canon itself** can't read the page (no space access, deleted page, Confluence error), Done **fails closed**.
+Page restrictions decide who may *read* the procedure. They don't decide who may close work that already follows the approved version.

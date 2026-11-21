@@ -53,14 +53,14 @@ type BindResponse = { ok: true; binding: unknown } | Failure;
 
 // ---- Load state for the issue view ----
 
-type ViewState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; view: IssueView };
+type ViewState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; view: IssueView };
 
 // ---- Helpers ----
 
-const LOZENGE_FOR_STATE: Record<BindingState, { text: string; appearance: 'success' | 'removed' | 'inprogress' | 'moved' }> = {
+const LOZENGE_FOR_STATE: Record<
+  BindingState,
+  { text: string; appearance: 'success' | 'removed' | 'inprogress' | 'moved' }
+> = {
   CURRENT: { text: 'CURRENT', appearance: 'success' },
   SUPERSEDED: { text: 'SUPERSEDED', appearance: 'removed' },
   REATTESTING: { text: 'REATTESTING', appearance: 'inprogress' },
@@ -149,11 +149,9 @@ const BreakGlass = ({
 
 const BindingStatusRow = ({ binding, onChanged }: { binding: IssueBindingView; onChanged: () => Promise<void> }) => {
   const [recorded, setRecorded] = useState(false);
-  const title = binding.restricted ? RESTRICTED_LABEL : binding.title ?? binding.pageId;
+  const title = binding.restricted ? RESTRICTED_LABEL : (binding.title ?? binding.pageId);
   const approved =
-    !binding.restricted && typeof binding.currentApproved === 'number'
-      ? ` · approved v${binding.currentApproved}`
-      : '';
+    !binding.restricted && typeof binding.currentApproved === 'number' ? ` · approved v${binding.currentApproved}` : '';
   const lozenge = LOZENGE_FOR_STATE[binding.state];
   return (
     <Stack space="space.050">
@@ -198,9 +196,7 @@ const StatusTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Prom
 // ---- Delta tab ----
 
 type DeltaLoadState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; delta: BindingDeltaView };
+  { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; delta: BindingDeltaView };
 
 const DeltaItemRow = ({ item }: { item: DeltaItem }) => (
   <Stack space="space.050">
@@ -260,7 +256,8 @@ const BindingDelta = ({ bindingId }: { bindingId: string }) => {
     );
   }
   // No newer approved version, or nothing changed in it: nothing to show for this binding.
-  if (delta.status === 'NO_CHANGES' || delta.toVersion === null) return <Text>No procedure changes since binding.</Text>;
+  if (delta.status === 'NO_CHANGES' || delta.toVersion === null)
+    return <Text>No procedure changes since binding.</Text>;
 
   return (
     <Stack space="space.100">
@@ -477,9 +474,7 @@ const BindingAttest = ({
 const AttestTab = ({ view, onChanged }: { view: IssueView; onChanged: () => Promise<void> }) => {
   const [notice, setNotice] = useState<string | null>(null);
   // Restricted bindings are skipped; the server would refuse them anyway.
-  const needing = view.bindings.filter(
-    (b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'),
-  );
+  const needing = view.bindings.filter((b) => !b.restricted && (b.state === 'SUPERSEDED' || b.state === 'REATTESTING'));
   return (
     <Stack space="space.300">
       {notice !== null && (
@@ -503,9 +498,7 @@ type EvidenceResponse = { ok: true; pack: EvidencePack } | Failure;
 type EvidenceAttachResponse = { ok: true; files: string[] } | Failure;
 
 type EvidenceLoadState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; pack: EvidencePack };
+  { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; pack: EvidencePack };
 
 const EvidenceTab = ({ refreshKey }: { refreshKey: number }) => {
   const [state, setState] = useState<EvidenceLoadState>({ kind: 'loading' });
@@ -683,7 +676,7 @@ const BindSection = ({ onBound }: BindSectionProps) => {
         <Textfield
           name="procedure-query"
           placeholder="Search procedures by title"
-          onChange={(e) => setQuery(String(e.target.value ?? ""))}
+          onChange={(e) => setQuery(String(e.target.value ?? ''))}
         />
         <Button onClick={search}>Search</Button>
       </Inline>
@@ -704,8 +697,7 @@ const BindSection = ({ onBound }: BindSectionProps) => {
 
 // ---- App ----
 
-const ROVO_UNAVAILABLE_TEXT =
-  "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
+const ROVO_UNAVAILABLE_TEXT = "Rovo isn't available here. Use the Delta and Attest tabs; the gate works without Rovo.";
 
 const App = () => {
   const [state, setState] = useState<ViewState>({ kind: 'loading' });
@@ -796,5 +788,5 @@ const App = () => {
 ForgeReconciler.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
