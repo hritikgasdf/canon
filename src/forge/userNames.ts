@@ -1,7 +1,7 @@
 // Forge adapter: best-effort accountId → displayName lookup as the app.
 import api, { route } from '@forge/api';
 
-const DISPLAY_NAME_CAP = 20;
+const DISPLAY_NAME_CAP = 50;
 
 /** Best effort accountId → displayName as the app (per-id lookups, so route`` escapes each id). */
 export async function displayNames(ids: string[]): Promise<Record<string, string>> {

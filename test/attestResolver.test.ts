@@ -66,7 +66,9 @@ describe('attest resolvers', () => {
 
   it('binding on another issue is NOT_FOUND', async () => {
     const { deps } = await setup();
-    expect(await attestStartHandler(req('u1', { bindingId: B }, 'OTHER-1'), deps)).toMatchObject({ error: 'NOT_FOUND' });
+    expect(await attestStartHandler(req('u1', { bindingId: B }, 'OTHER-1'), deps)).toMatchObject({
+      error: 'NOT_FOUND',
+    });
   });
 
   it('NO_ACCESS never mutates', async () => {
@@ -109,11 +111,36 @@ describe('attest resolvers', () => {
     expect(got.ok && got.attestation?.sealHash).toBeTruthy();
   });
 
+  it('returns display names for implementer, checker and item actors (sample/canon ids skipped)', async () => {
+    const { deps } = await setup();
+    const asked: string[][] = [];
+    deps.displayNames = async (ids) => {
+      asked.push(ids);
+      return Object.fromEntries(ids.map((id) => [id, `Name of ${id}`]));
+    };
+    const started = await attestStartHandler(req('impl'), deps);
+    expect(started).toMatchObject({ ok: true, names: { impl: 'Name of impl' } });
+    if (!started.ok || !started.attestation) throw new Error('start failed');
+    for (const i of started.attestation.items) {
+      await attestItemHandler(req('impl', { bindingId: B, itemId: i.itemId, action: 'DONE', note: 'implemented' }), deps);
+    }
+    const signed = await attestSignHandler(req('qa', { bindingId: B }), deps);
+    expect(signed).toMatchObject({ ok: true, names: { impl: 'Name of impl', qa: 'Name of qa' } });
+    expect(asked.flat().some((id) => id.startsWith('sample:') || id.startsWith('canon:'))).toBe(false);
+  });
+
+  it('a failing name lookup never fails the request', async () => {
+    const { deps } = await setup();
+    deps.displayNames = async () => Promise.reject(new Error('users down'));
+    const r = await attestStartHandler(req('impl'), deps);
+    expect(r).toMatchObject({ ok: true, names: {} });
+  });
+
   it('rejects bad item payloads with a code', async () => {
     const { deps } = await setup();
     await attestStartHandler(req('impl'), deps);
-    expect(
-      await attestItemHandler(req('impl', { bindingId: B, itemId: 'x', action: 'WHATEVER' }), deps),
-    ).toMatchObject({ error: 'INVALID_ACTION' });
+    expect(await attestItemHandler(req('impl', { bindingId: B, itemId: 'x', action: 'WHATEVER' }), deps)).toMatchObject(
+      { error: 'INVALID_ACTION' },
+    );
   });
 });

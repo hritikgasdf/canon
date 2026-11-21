@@ -260,7 +260,7 @@ describe('write-side actions', () => {
 
   it('a second call with a new item id sets only that item', async () => {
     const { wdeps, ids } = await setupW();
-    if (ids.length < 2) return;
+    expect(ids.length).toBeGreaterThanOrEqual(2);
     await create(wdeps, ids);
     const r = await rovoCreateChecklist(
       'PAY-1',

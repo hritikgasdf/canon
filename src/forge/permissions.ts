@@ -1,6 +1,7 @@
 // Forge adapter: permission checks shared by resolvers.
 import api, { route } from '@forge/api';
 import { isAdminFromMyPermissions } from './invocationContext';
+import { visibleIssuesWith } from './visibility';
 
 /**
  * Whether the calling user administers the project: ADMINISTER_PROJECTS on it (granted by the
@@ -77,49 +78,25 @@ export async function canUserBrowseIssue(accountId: string, issueKey: string): P
   }
 }
 
-/**
- * The subset of `issueKeys` the current user can browse (issue security aware): GET each issue as
- * the user, 10 at a time. Any non-200 or error hides that issue.
- */
-export async function visibleIssues(issueKeys: string[]): Promise<Set<string>> {
-  const out = new Set<string>();
-  const keys = issueKeys.filter((k) => /^[A-Z][A-Z0-9_]+-[0-9]+$/.test(k));
-  for (let c = 0; c < keys.length; c += 100) {
-    const chunk = keys.slice(c, c + 100);
-    if (await searchChunk(chunk, out)) continue;
-    // Fallback (e.g. a deleted key made the JQL fail): GET each issue, 10 at a time.
-    for (let i = 0; i < chunk.length; i += 10) {
-      await Promise.all(
-        chunk.slice(i, i + 10).map(async (key) => {
-          try {
-            const res = await api
-              .asUser()
-              .requestJira(route`/rest/api/3/issue/${key}?fields=none`, { headers: { Accept: 'application/json' } });
-            if (res.ok) out.add(key);
-          } catch {
-            // hidden
-          }
-        }),
-      );
-    }
-  }
-  return out;
-}
-
-/** One as-user JQL search for the chunk. Returns false (adding nothing) if it did not succeed. */
-async function searchChunk(chunk: string[], out: Set<string>): Promise<boolean> {
-  try {
-    const res = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jql: `key in (${chunk.join(',')})`, fields: ['key'], maxResults: 100 }),
-    });
-    if (!res.ok) return false;
-    const j = (await res.json()) as { issues?: Array<{ key?: unknown }> };
-    if (!Array.isArray(j.issues)) return false;
-    for (const i of j.issues) if (typeof i.key === 'string' && chunk.includes(i.key)) out.add(i.key);
-    return true;
-  } catch {
-    return false;
-  }
+/** The subset of `issueKeys` the current user can browse (issue security aware). See visibleIssuesWith. */
+export function visibleIssues(issueKeys: string[]): Promise<Set<string>> {
+  return visibleIssuesWith(issueKeys, {
+    async search(chunk) {
+      const res = await api.asUser().requestJira(route`/rest/api/3/search/jql`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jql: `key in (${chunk.join(',')})`, fields: ['key'], maxResults: 100 }),
+      });
+      if (!res.ok) return null;
+      const j = (await res.json()) as { issues?: Array<{ key?: unknown }> };
+      if (!Array.isArray(j.issues)) return null;
+      return j.issues.map((x) => x.key).filter((k): k is string => typeof k === 'string');
+    },
+    async getOne(key) {
+      const res = await api
+        .asUser()
+        .requestJira(route`/rest/api/3/issue/${key}?fields=none`, { headers: { Accept: 'application/json' } });
+      return res.ok;
+    },
+  });
 }
