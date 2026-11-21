@@ -21,7 +21,7 @@ export interface RovoDeps {
 
 export const APPROVED_NODE_CAP = 200;
 
-export type RovoOverall = 'NO_BINDING' | 'CLEAR' | 'BLOCKED' | 'WARN_ONLY' | 'UNVERIFIED';
+export type RovoOverall = 'NO_BINDING' | 'CLEAR' | 'BLOCKED' | 'WARN_ONLY' | 'UNVERIFIED' | 'CLOSED';
 export type RovoBindingState = BindingState | 'UNVERIFIED' | 'CLOSED';
 
 export interface RovoBindingStatus {
@@ -89,9 +89,20 @@ export async function rovoGateStatus(issueKey: string, deps: RovoDeps): Promise<
       }
       out.push(entry);
     }
-    const overall: RovoOverall = !decision.allow ? 'BLOCKED' : decision.warnOnly ? 'WARN_ONLY' : 'CLEAR';
+    // Work that is already done (every binding closed) is not gated now; if it is reopened, the
+    // gate re-evaluates on the next Done transition.
+    const allClosed = bindings.length > 0 && bindings.every((b) => b.closedAt !== undefined);
+    const overall: RovoOverall = allClosed
+      ? 'CLOSED'
+      : !decision.allow
+        ? 'BLOCKED'
+        : decision.warnOnly
+          ? 'WARN_ONLY'
+          : 'CLEAR';
     const message =
-      overall === 'CLEAR'
+      overall === 'CLOSED'
+        ? 'This work item is done. Canon does not gate closed work; if it is reopened, Done will require the procedure to be current or re-attested.'
+        : overall === 'CLEAR'
         ? 'All bound procedures are at their current approved version (or re-attested). Done is not blocked.'
         : (decision.message ?? GATE_FAIL_CLOSED);
     return { ok: true, issueKey, overall, bindings: out, message };
