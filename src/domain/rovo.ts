@@ -22,7 +22,7 @@ export interface RovoDeps {
 export const APPROVED_NODE_CAP = 200;
 
 export type RovoOverall = 'NO_BINDING' | 'CLEAR' | 'BLOCKED' | 'WARN_ONLY' | 'UNVERIFIED';
-export type RovoBindingState = BindingState | 'UNVERIFIED';
+export type RovoBindingState = BindingState | 'UNVERIFIED' | 'CLOSED';
 
 export interface RovoBindingStatus {
   bindingId: string;
@@ -72,7 +72,12 @@ export async function rovoGateStatus(issueKey: string, deps: RovoDeps): Promise<
       const reason = decision.reasons.find((r) => r.pageId === b.pageId && r.boundVersion === satisfiedAt);
       const entry: RovoBindingStatus = {
         bindingId: b.id,
-        state: reason && reason.code !== 'PENDING_APPROVAL_IGNORED' ? reason.code : b.state,
+        state:
+          b.closedAt !== undefined
+            ? 'CLOSED'
+            : reason && reason.code !== 'PENDING_APPROVAL_IGNORED'
+              ? reason.code
+              : b.state,
         boundVersion: b.boundVersion,
         restricted: !canView,
       };

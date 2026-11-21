@@ -276,6 +276,25 @@ describe('evaluateGate (full)', () => {
   });
 });
 
+describe('closed binding', () => {
+  it('is evaluated like any other binding: allows when no newer approved version', () => {
+    const d = evaluateGate(input({ bindings: [bind({ closedAt: '2026-01-02T00:00:00Z' })] }));
+    expect(d.allow).toBe(true);
+  });
+
+  it('blocks (fail closed) on a newer approved version even though never marked superseded', () => {
+    const d = evaluateGate(
+      input({
+        bindings: [bind({ closedAt: '2026-01-02T00:00:00Z', state: 'CURRENT' })],
+        procedures: { '1': proc({ currentApproved: 4 }) },
+        liveVersions: { '1': 4 },
+      }),
+    );
+    expect(d.allow).toBe(false);
+    expect(d.reasons[0]).toMatchObject({ code: 'SUPERSEDED', targetVersion: 4 });
+  });
+});
+
 describe('break-glass override', () => {
   const ov = (forVersion: number | null, priorState: Binding['state'] = 'SUPERSEDED') => ({
     by: 'admin',

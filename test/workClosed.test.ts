@@ -136,7 +136,25 @@ describe('work closed', () => {
       binding({ closedAt: T1, state: 'SUPERSEDED', supersededBy: 4 }),
       binding({ id: 'b2', pageId: 'P2', closedAt: T1, boundVersion: 7 }),
     ]);
-    expect(s).toMatchObject({ state: 'CLOSED', bindingCount: 2, boundVersion: 3, targetVersion: null });
+    expect(s).toMatchObject({ state: 'CLOSED', bindingCount: 2, boundVersion: 7, targetVersion: null });
+  });
+
+  it('audit failure on Done leaves bindings unmodified', async () => {
+    const repos = await setup();
+    repos.audit.append = async () => {
+      throw new Error('audit down');
+    };
+    await expect(handleIssueUpdated(repos, event('done'), () => T1)).rejects.toThrow('audit down');
+    expect((await repos.bindings.get('OPS-1.P1'))?.closedAt).toBeUndefined();
+  });
+
+  it('audit failure on reopen leaves bindings unmodified', async () => {
+    const repos = await setup({ closedAt: T0 });
+    repos.audit.append = async () => {
+      throw new Error('audit down');
+    };
+    await expect(handleIssueUpdated(repos, event('new'), () => T1)).rejects.toThrow('audit down');
+    expect((await repos.bindings.get('OPS-1.P1'))?.closedAt).toBe(T0);
   });
 
   it('summary ignores closed bindings while another is open', () => {

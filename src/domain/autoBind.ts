@@ -52,7 +52,7 @@ export async function handleIssueUpdated(
     const open = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.closedAt === undefined);
     if (open.length === 0) return { action: 'IGNORED', reason: 'not-start-transition' };
     const at = now();
-    for (const b of open) await repos.bindings.put({ ...b, closedAt: at });
+    // Audit first: if the append throws, no binding has been modified.
     await appendAudit(repos.audit, {
       issueKey,
       type: 'WORK_CLOSED',
@@ -60,19 +60,18 @@ export async function handleIssueUpdated(
       at,
       payload: { bindingIds: open.map((b) => b.id), states: open.map((b) => b.state) },
     });
+    for (const b of open) await repos.bindings.put({ ...b, closedAt: at });
     return { action: 'CLOSED', issueKey };
   }
 
+  // Intended semantics: any status change out of the done category (here statusCategory is not
+  // 'done') reopens the work, whatever the new category is.
   let reopened = false;
   if (statusChanged) {
     const closed = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.closedAt !== undefined);
     if (closed.length > 0) {
       const at = now();
-      for (const b of closed) {
-        const reopenedBinding: Binding = { ...b };
-        delete reopenedBinding.closedAt;
-        await repos.bindings.put(reopenedBinding);
-      }
+      // Audit first: if the append throws, no binding has been modified.
       await appendAudit(repos.audit, {
         issueKey,
         type: 'WORK_REOPENED',
@@ -80,6 +79,11 @@ export async function handleIssueUpdated(
         at,
         payload: { bindingIds: closed.map((b) => b.id), states: closed.map((b) => b.state) },
       });
+      for (const b of closed) {
+        const reopenedBinding: Binding = { ...b };
+        delete reopenedBinding.closedAt;
+        await repos.bindings.put(reopenedBinding);
+      }
       reopened = true;
     }
   }

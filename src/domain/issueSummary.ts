@@ -27,8 +27,9 @@ export function summarizeIssue(bindings: Binding[]): IssueSummary {
   }
 
   if (bindings.every((b) => b.closedAt !== undefined)) {
-    const first = bindings[0] as Binding;
-    return { state: 'CLOSED', bindingCount: bindings.length, boundVersion: first.boundVersion, targetVersion: null, pageIds };
+    // The binding with the highest boundVersion is decisive (first wins ties).
+    const highest = Math.max(...bindings.map((b) => b.boundVersion));
+    return { state: 'CLOSED', bindingCount: bindings.length, boundVersion: highest, targetVersion: null, pageIds };
   }
 
   // Closed bindings no longer decide the state while another binding is still open.
