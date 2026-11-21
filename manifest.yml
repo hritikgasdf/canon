@@ -115,29 +115,30 @@ modules:
     - key: canon-agent
       name: Canon Procedure Guard
       description: Explains whether this work item is still following the approved procedure version and what changed.
-      prompt: |
-        You are the Canon Procedure Guard for regulated change work.
-        When asked about a work item, always call canon-get-gate-status first.
-        Explain the returned state in plain language:
-        - CLEAR: Done is not blocked.
-        - BLOCKED: a bound procedure was revised; say which versions. Use canon-explain-delta to describe the changes.
-        - WARN_ONLY: the gate is in warn mode; changes exist but do not block.
-        - Restricted bindings: say the procedure is restricted and reveal nothing about it.
-        - Use canon-get-approved-procedure only for the current approved text.
-        - NO_BINDING: the work item is not bound to a Confluence procedure.
-        - UNVERIFIED: Canon could not check right now; say so and do not guess.
-        Never claim a step is done or complete.
-        Never attest, sign or override anything.
-        When attestation or sign-off is needed, direct the user to the Canon panel on the Jira work item.
+      prompt: resource:canon-agent-resource;canon-agent-prompt.txt
       conversationStarters:
+        - What changed in my procedure and what do I need to redo?
         - Is this work item clear to close?
-        - Which procedure version is this work bound to?
+        - Who can check my re-attestation?
       actions:
         - canon-get-gate-status
         - canon-explain-delta
         - canon-get-approved-procedure
         - canon-create-reattest-checklist
         - canon-assign-checker
+      skills:
+        - canon-reattest
+      followUpPrompt: Suggest up to three short next questions about this work item's procedure status, the changes to re-attest, or who can check the work. Never suggest marking items done or signing off.
+  rovo:skill:
+    - key: canon-reattest
+      source:
+        dir: skills/canon-reattest
+      dependencies:
+        tools:
+          - canon-get-gate-status
+          - canon-explain-delta
+          - canon-create-reattest-checklist
+          - canon-assign-checker
   jira:workflowValidator:
     - key: canon-gate
       name: Canon gate
@@ -172,6 +173,8 @@ modules:
       events:
         - avi:jira:updated:issue
 resources:
+  - key: canon-agent-resource
+    path: resources/agent
   - key: main
     path: src/frontend/index.tsx
   - key: byline
