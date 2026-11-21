@@ -5,6 +5,7 @@ import type {
   BindingState,
   Delta,
   Procedure,
+  SampleState,
   Settings,
   Snapshot,
 } from './types';
@@ -55,6 +56,11 @@ export interface SettingsRepo {
   put(s: Settings): Promise<void>;
 }
 
+export interface SampleStateRepo {
+  get(): Promise<SampleState | null>;
+  put(s: SampleState): Promise<void>;
+}
+
 export interface Repos {
   procedures: ProcedureRepo;
   snapshots: SnapshotRepo;
@@ -63,4 +69,5 @@ export interface Repos {
   attestations: AttestationRepo;
   audit: AuditRepo;
   settings: SettingsRepo;
+  sample: SampleStateRepo;
 }

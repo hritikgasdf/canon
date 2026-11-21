@@ -191,6 +191,7 @@ permissions:
     - read:confluence-content.summary
     - read:jira-work
     - write:jira-work
+    - write:page:confluence
     - read:jira-user
     - storage:app
 app:

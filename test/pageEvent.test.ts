@@ -103,6 +103,12 @@ function memoryRepos(): Repos {
         settings = structuredClone(s);
       },
     },
+    sample: {
+      async get() {
+        return null;
+      },
+      async put() {},
+    },
   };
 }
 

@@ -9,6 +9,7 @@ import {
   type DeltaRepo,
   type ProcedureRepo,
   type Repos,
+  type SampleStateRepo,
   type SettingsRepo,
   type SnapshotRepo,
 } from '../domain/repos';
@@ -20,6 +21,7 @@ import {
   type BindingState,
   type Delta,
   type Procedure,
+  type SampleState,
   type Settings,
   type Snapshot,
 } from '../domain/types';
@@ -227,6 +229,17 @@ function createSettingsRepo(store: KvsStoreLike): SettingsRepo {
   };
 }
 
+function createSampleRepo(store: KvsStoreLike): SampleStateRepo {
+  return {
+    async get() {
+      return (await store.get<SampleState>('sample')) ?? null;
+    },
+    async put(s) {
+      await store.set('sample', s);
+    },
+  };
+}
+
 /**
  * Forge KVS-backed implementation of the domain repos. Uses only plain key/value
  * reads, writes and key-prefix queries; no Custom Entities.
@@ -241,6 +254,7 @@ export function createKvsRepos(store: KvsStoreLike = kvs): Repos {
     attestations: createAttestationRepo(store),
     audit: createAuditRepo(store),
     settings: createSettingsRepo(store),
+    sample: createSampleRepo(store),
   };
 }
 
