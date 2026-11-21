@@ -202,3 +202,59 @@ describe('runCanonGate', () => {
     expect(d.reasons.map((r) => r.pageId)).toEqual(['p2']);
   });
 });
+
+describe('runCanonGate concurrent reads', () => {
+  it('rejects (caller fails closed) when the settings read fails', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(3) });
+    await repos.procedures.put(procedure());
+    await repos.bindings.put(binding('b1'));
+    deps.repos = { ...repos, settings: { ...repos.settings, get: () => Promise.reject(new Error('kvs down')) } };
+    await expect(runCanonGate('PAY-1', deps)).rejects.toThrow('kvs down');
+  });
+
+  it('rejects on a Confluence error that is not "gone", even if settings fail too', async () => {
+    const { repos, deps } = setup({ [PAGE]: new Error('Confluence getPage failed: 500') });
+    await repos.procedures.put(procedure());
+    await repos.bindings.put(binding('b1'));
+    deps.repos = { ...repos, settings: { ...repos.settings, get: () => Promise.reject(new Error('kvs down')) } };
+    await expect(runCanonGate('PAY-1', deps)).rejects.toThrow('500');
+  });
+
+  it('reads bindings once when no inline supersede runs', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(3) });
+    await repos.procedures.put(procedure());
+    await repos.bindings.put(binding('b1'));
+    let reads = 0;
+    deps.repos = {
+      ...repos,
+      bindings: {
+        ...repos.bindings,
+        listByIssue: (k: string) => {
+          reads += 1;
+          return repos.bindings.listByIssue(k);
+        },
+      },
+    };
+    expect((await runCanonGate('PAY-1', deps)).allow).toBe(true);
+    expect(reads).toBe(1);
+  });
+
+  it('re-reads bindings after an inline supersede and decides on the updated state', async () => {
+    const { repos, deps } = setup({ [PAGE]: meta(4) });
+    await repos.procedures.put(procedure(PAGE, { policy: 'every-major' }));
+    await repos.bindings.put(binding('b1'));
+    let reads = 0;
+    const wrapped = {
+      ...repos.bindings,
+      listByIssue: (k: string) => {
+        reads += 1;
+        return repos.bindings.listByIssue(k);
+      },
+    };
+    deps.repos = { ...repos, bindings: wrapped };
+    const d = await runCanonGate('PAY-1', deps);
+    expect(reads).toBeGreaterThanOrEqual(2);
+    expect(d.allow).toBe(false);
+    expect(d.reasons[0]).toMatchObject({ code: 'SUPERSEDED', targetVersion: 4 });
+  });
+});

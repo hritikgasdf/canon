@@ -62,6 +62,7 @@ export async function breakGlassHandler(req: unknown, deps: OverrideDeps): Promi
     return { ok: true, overridden: true };
   } catch (e) {
     if (e instanceof OverrideError) return { ok: false, error: e.code, message: e.message };
-    return { ok: false, error: 'INTERNAL', message: e instanceof Error ? e.message : 'Unexpected error' };
+    console.error(JSON.stringify({ tag: 'canon-resolver-error', error: e instanceof Error ? e.message : String(e) }));
+    return { ok: false, error: 'INTERNAL', message: 'Something went wrong. Try again.' };
   }
 }

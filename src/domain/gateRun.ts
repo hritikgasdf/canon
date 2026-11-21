@@ -26,45 +26,54 @@ export async function runCanonGate(
   const initial = await repos.bindings.listByIssue(issueKey);
   if (initial.length === 0) return { allow: true, warnOnly: false, reasons: [], bindingCount: 0 };
 
+  const settingsP = repos.settings.get(); // independent; read concurrently
+  settingsP.catch(() => undefined); // awaited below; avoid an unhandled rejection meanwhile
   const pageIds = [...new Set(initial.map((b) => b.pageId))];
   const liveVersions: Record<string, number | null | 'NOT_FOUND'> = {};
   const procedures: Record<string, Procedure | null> = {};
   const bindingsByPage: Record<string, Binding[]> = {};
 
   await Promise.all(pageIds.map(async (pageId) => {
-    let live: number | 'NOT_FOUND';
-    try {
-      live = (await deps.getPageMeta(pageId)).currentVersion;
-    } catch (e) {
-      if (!isGone(e)) throw e;
-      live = 'NOT_FOUND';
-    }
+    const liveP = deps.getPageMeta(pageId).then(
+      (m): number | 'NOT_FOUND' => m.currentVersion,
+      (e: unknown): 'NOT_FOUND' => {
+        if (!isGone(e)) throw e;
+        return 'NOT_FOUND';
+      },
+    );
+    const [live, stored] = await Promise.all([liveP, repos.procedures.get(pageId)]);
     liveVersions[pageId] = live;
 
-    let proc = await repos.procedures.get(pageId);
+    let proc = stored;
+    let refreshed = false;
     if (typeof live === 'number' && proc && live > (proc.lastSeenVersion ?? 0)) {
       await handlePageEvent(repos, deps, {
         eventType: 'avi:confluence:updated:page',
         content: { id: pageId, version: { number: live } },
       });
       proc = await repos.procedures.get(pageId);
+      refreshed = true;
     }
     procedures[pageId] = proc;
-    bindingsByPage[pageId] = (await repos.bindings.listByIssue(issueKey)).filter((b) => b.pageId === pageId);
+    // Bindings only change here through the inline supersede, so re-read them only after it ran.
+    // (A binding written concurrently by another invocation after the initial read is not seen;
+    // that window is the same as reading just before the gate started.)
+    const source = refreshed ? await repos.bindings.listByIssue(issueKey) : initial;
+    bindingsByPage[pageId] = source.filter((b) => b.pageId === pageId);
   }));
 
   const bindings = pageIds.flatMap((id) => bindingsByPage[id] ?? []);
   const attestations: Record<string, Attestation | null> = {};
-  for (const b of bindings) {
-    const proc = procedures[b.pageId];
-    const live = liveVersions[b.pageId];
-    attestations[b.id] =
-      proc && typeof live === 'number'
-        ? await repos.attestations.get(b.id, effectiveTarget(b, proc, live))
-        : null;
-  }
+  await Promise.all(
+    bindings.map(async (b) => {
+      const proc = procedures[b.pageId];
+      const live = liveVersions[b.pageId];
+      attestations[b.id] =
+        proc && typeof live === 'number' ? await repos.attestations.get(b.id, effectiveTarget(b, proc, live)) : null;
+    }),
+  );
 
-  const mode = (await repos.settings.get()).validatorMode;
+  const mode = (await settingsP).validatorMode;
   const decision = evaluateGate({ issueKey, mode, bindings, procedures, liveVersions, attestations });
   return { ...decision, bindingCount: bindings.length };
 }
