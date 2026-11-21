@@ -1,10 +1,12 @@
-import api, { route } from '@forge/api';
 import Resolver from '@forge/resolver';
 import { breakGlassHandler } from './overrideResolver';
 import { approveVersion, ApproveError, markControlled, procedureState } from '../domain/approve';
 import { bindIssue, BindError } from '../domain/bind';
 import { buildIssueView } from '../domain/issueView';
 import { attestationHandler, attestItemHandler, attestSignHandler, attestStartHandler } from './attestResolver';
+import { evidenceAttachHandler, evidenceHandler } from './evidenceResolver';
+import { uploadAttachments } from './attachments';
+import { isProjectAdmin } from './permissions';
 import { bindingDeltaHandler } from './deltaResolver';
 import { canUserView, fetchBody, getPageMeta } from './confluence';
 import { createAppRepos } from './kvsRepos';
@@ -123,16 +125,15 @@ resolver.define('canonAttestStart', (req) => attestStartHandler(req, attestDeps(
 resolver.define('canonAttestItem', (req) => attestItemHandler(req, attestDeps()));
 resolver.define('canonAttestSign', (req) => attestSignHandler(req, attestDeps()));
 
-async function isProjectAdmin(projectKey: string): Promise<boolean> {
-  const res = await api
-    .asUser()
-    .requestJira(route`/rest/api/3/mypermissions?projectKey=${projectKey}&permissions=ADMINISTER_PROJECTS`, {
-      headers: { Accept: 'application/json' },
-    });
-  if (!res.ok) return false;
-  const j = (await res.json()) as { permissions?: { ADMINISTER_PROJECTS?: { havePermission?: unknown } } };
-  return j.permissions?.ADMINISTER_PROJECTS?.havePermission === true;
-}
+const evidenceDeps = () => ({
+  repos: createAppRepos(),
+  canView: canUserView,
+  upload: uploadAttachments,
+  isProjectAdmin,
+  now: () => new Date().toISOString(),
+});
+resolver.define('canonEvidence', (req) => evidenceHandler(req, evidenceDeps()));
+resolver.define('canonEvidenceAttach', (req) => evidenceAttachHandler(req, evidenceDeps()));
 
 resolver.define('canonBreakGlass', (req) =>
   breakGlassHandler(req, {
