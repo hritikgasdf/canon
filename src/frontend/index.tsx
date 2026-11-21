@@ -531,16 +531,20 @@ const EvidenceTab = () => {
                 <Lozenge appearance={lozenge.appearance}>{lozenge.text}</Lozenge>
                 <Text>{`v${b.boundVersion}`}</Text>
               </Inline>
-              {b.attestation !== undefined && (
-                <Inline space="space.100" alignBlock="center">
-                  <Text>{`Sealed by ${b.attestation.checker ?? '—'} at ${b.attestation.checkerSignedAt ?? '—'}`}</Text>
-                  {b.attestation.sealValid ? (
+              {(b.attestations ?? []).map((a) => (
+                <Inline key={a.toVersion} space="space.100" alignBlock="center">
+                  <Text>
+                    {a.sealHash === undefined
+                      ? `v${a.toVersion}: not yet signed off`
+                      : `v${a.toVersion}: sealed by ${a.checker ?? '—'} at ${a.checkerSignedAt ?? '—'}`}
+                  </Text>
+                  {a.sealHash === undefined ? null : a.sealValid ? (
                     <Lozenge appearance="success">Seal valid</Lozenge>
                   ) : (
                     <Lozenge appearance="removed">Seal invalid</Lozenge>
                   )}
                 </Inline>
-              )}
+              ))}
             </Stack>
           );
         })}

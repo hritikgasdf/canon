@@ -74,7 +74,7 @@ describe('buildEvidence', () => {
     expect(b.restricted).toBe(true);
     expect(b.title).toBeUndefined();
     expect(b.approvedVersions).toBeUndefined();
-    expect(b.attestation).toBeUndefined();
+    expect(b.attestations).toBeUndefined();
     expect(JSON.stringify(pack)).not.toContain('Secret SOP');
     expect(JSON.stringify(pack)).not.toContain('sensitive note');
   });
@@ -92,8 +92,8 @@ describe('buildEvidence', () => {
 
   it('marks a sealed attestation sealValid', async () => {
     const pack = await buildEvidence(await setup({ sealed: true }), { issueKey: K, now: NOW, canView: all });
-    expect(pack.bindings[0].attestation?.sealValid).toBe(true);
-    expect(pack.bindings[0].attestation?.checker).toBe('chk');
+    expect(pack.bindings[0].attestations?.[0].sealValid).toBe(true);
+    expect(pack.bindings[0].attestations?.[0].checker).toBe('chk');
   });
 
   it('marks an attestation edited after sealing sealValid false', async () => {
@@ -101,7 +101,7 @@ describe('buildEvidence', () => {
     const a = (await repos.attestations.get('CAN-1.p1', 4))!;
     await repos.attestations.put({ ...a, items: [{ ...a.items[0], status: 'NOT_MATERIAL' }] });
     const pack = await buildEvidence(repos, { issueKey: K, now: NOW, canView: all });
-    expect(pack.bindings[0].attestation?.sealValid).toBe(false);
+    expect(pack.bindings[0].attestations?.[0].sealValid).toBe(false);
   });
 });
 
@@ -132,9 +132,38 @@ describe('evidence resolvers', () => {
   async function deps() {
     const repos = await setup();
     const upload = vi.fn(async () => undefined);
-    const d: EvidenceDeps = { repos, canView: all, upload, now: () => NOW };
+    const d: EvidenceDeps = { repos, canView: all, isProjectAdmin: async () => true, upload, now: () => NOW };
     return { repos, upload, d };
   }
+
+  it('returns NOT_ADMIN (and does nothing) for non-admins and failing admin checks', async () => {
+    const { d, upload, repos } = await deps();
+    d.isProjectAdmin = async () => false;
+    expect(await evidenceAttachHandler({ context: ctx }, d)).toMatchObject({ ok: false, error: 'NOT_ADMIN' });
+    d.isProjectAdmin = async () => {
+      throw new Error('jira down');
+    };
+    expect(await evidenceAttachHandler({ context: ctx }, d)).toMatchObject({ ok: false, error: 'NOT_ADMIN' });
+    expect(upload).not.toHaveBeenCalled();
+    expect((await repos.audit.last(K))?.type).toBe('T');
+  });
+
+  it('passes the project key to isProjectAdmin', async () => {
+    const { d } = await deps();
+    const spy = vi.fn(async () => true);
+    d.isProjectAdmin = spy;
+    await evidenceAttachHandler({ context: ctx }, d);
+    expect(spy).toHaveBeenCalledWith('CAN');
+  });
+
+  it('attached files are issueSafe', async () => {
+    const { d, upload } = await deps();
+    await evidenceAttachHandler({ context: ctx }, d);
+    const files = (upload.mock.calls[0] as unknown as [string, { content: string }[]])[1];
+    expect(files[0].content).toContain('"mode": "issueSafe"');
+    expect(files[0].content).not.toContain('Secret SOP');
+    expect(files[1].content).not.toContain('Secret SOP');
+  });
 
   it('returns NO_CONTEXT without issue or account', async () => {
     const { d, upload } = await deps();
@@ -164,15 +193,107 @@ describe('evidence resolvers', () => {
     expect(last?.type).toBe('EVIDENCE_EXPORTED');
     expect(last?.actor).toBe('acc');
     expect(last?.payload.files).toEqual(files.map((f) => f.name));
+    expect(last?.payload.chainOk).toBe(true);
+    expect(typeof last?.payload.headHash).toBe('string');
   });
 
-  it('fails without auditing when upload throws', async () => {
+  it('audits BEFORE uploading', async () => {
+    const { d, repos } = await deps();
+    let seenAtUpload: string | undefined;
+    d.upload = async () => {
+      seenAtUpload = (await repos.audit.last(K))?.type;
+    };
+    await evidenceAttachHandler({ context: ctx }, d);
+    expect(seenAtUpload).toBe('EVIDENCE_EXPORTED');
+  });
+
+  it('returns UPLOAD_FAILED and appends EVIDENCE_EXPORT_FAILED when upload throws', async () => {
     const { d, repos } = await deps();
     d.upload = async () => {
       throw new Error('boom');
     };
     const r = await evidenceAttachHandler({ context: ctx }, d);
+    expect(r).toMatchObject({ ok: false, error: 'UPLOAD_FAILED' });
+    const events = await repos.audit.list(K);
+    expect(events.slice(-2).map((x) => x.type)).toEqual(['EVIDENCE_EXPORTED', 'EVIDENCE_EXPORT_FAILED']);
+    expect(events[events.length - 1].payload.files).toEqual(events[events.length - 2].payload.files);
+  });
+
+  it('does not upload when the pre-upload audit append fails', async () => {
+    const { d, repos, upload } = await deps();
+    d.repos = { ...repos, audit: { ...repos.audit, append: async () => Promise.reject(new Error('kvs down')) } };
+    const r = await evidenceAttachHandler({ context: ctx }, d);
     expect(r).toMatchObject({ ok: false, error: 'INTERNAL' });
-    expect((await repos.audit.last(K))?.type).toBe('T');
+    expect(upload).not.toHaveBeenCalled();
+  });
+});
+
+describe('issueSafe mode', () => {
+  async function secretRepos(): Promise<Repos> {
+    const repos = await setup({ sealed: true });
+    const b = (await repos.bindings.get('CAN-1.p1'))!;
+    await repos.bindings.put({ ...b, override: { by: 'adm', at: NOW, reason: 'TOP SECRET REASON', forVersion: 4 } });
+    const a = (await repos.attestations.get('CAN-1.p1', 4))!;
+    await repos.attestations.put({ ...a, items: [{ ...a.items[0], note: 'private note', rovoTask: 'rt' }] });
+    await appendAudit(repos.audit, {
+      issueKey: K,
+      type: 'BREAK_GLASS',
+      actor: 'adm',
+      at: NOW,
+      payload: { bindingId: 'CAN-1.p1', forVersion: 4, reason: 'TOP SECRET REASON', note: 'n' },
+    });
+    return repos;
+  }
+
+  it('strips titles, approval details, notes and override reason', async () => {
+    const pack = await buildEvidence(await secretRepos(), { issueKey: K, now: NOW, canView: all, mode: 'issueSafe' });
+    const json = JSON.stringify(pack);
+    expect(json).not.toContain('Secret SOP');
+    expect(json).not.toContain('TOP SECRET REASON');
+    expect(json).not.toContain('private note');
+    expect(json).not.toContain('rt"');
+    expect(json).not.toContain('boss');
+    const b = pack.bindings[0];
+    expect(b.title).toBeUndefined();
+    expect(b.approvedVersions).toEqual([{ version: 4, contentHash: 'h4' }]);
+    expect(Object.keys(b.attestations![0].items[0]).sort()).toEqual(['at', 'by', 'itemId', 'status']);
+    expect(b.override).toMatchObject({ by: 'adm', forVersion: 4, redacted: true });
+  });
+
+  it('whitelists audit payload keys and marks redaction', async () => {
+    const pack = await buildEvidence(await secretRepos(), { issueKey: K, now: NOW, canView: all, mode: 'issueSafe' });
+    const bg = pack.audit.find((e) => e.type === 'BREAK_GLASS')!;
+    expect(bg.payload).toEqual({ bindingId: 'CAN-1.p1', forVersion: 4, redacted: true });
+    // chain verdict is computed on the real events, so it stays valid
+    expect(pack.chain.ok).toBe(true);
+  });
+
+  it('viewer mode keeps full detail', async () => {
+    const pack = await buildEvidence(await secretRepos(), { issueKey: K, now: NOW, canView: all });
+    expect(pack.mode).toBe('viewer');
+    expect(JSON.stringify(pack)).toContain('private note');
+    expect(pack.bindings[0].title).toBe('Secret SOP');
+  });
+});
+
+describe('historical attestations', () => {
+  it('lists audited and current attestations once each, with sealValid', async () => {
+    const repos = await setup({ sealed: true });
+    const old: Attestation = sign(
+      assignChecker(
+        { bindingId: 'CAN-1.p1', toVersion: 3, implementer: 'impl', items: [{ itemId: 'o', status: 'DONE' }] },
+        { checker: 'chk' },
+      ),
+      { actor: 'chk', at: NOW },
+    );
+    await repos.attestations.put(old);
+    for (const type of ['REATTEST_STARTED', 'SIGNED_OFF']) {
+      await appendAudit(repos.audit, { issueKey: K, type, actor: 'u', at: NOW, payload: { bindingId: 'CAN-1.p1', toVersion: 3 } });
+    }
+    await appendAudit(repos.audit, { issueKey: K, type: 'SIGNED_OFF', actor: 'u', at: NOW, payload: { bindingId: 'CAN-1.p1', toVersion: 4 } });
+    const pack = await buildEvidence(repos, { issueKey: K, now: NOW, canView: all });
+    const atts = pack.bindings[0].attestations!;
+    expect(atts.map((a) => a.toVersion)).toEqual([3, 4]);
+    expect(atts.every((a) => a.sealValid)).toBe(true);
   });
 });

@@ -4,6 +4,19 @@ import { verifySeal } from './attest';
 import type { Repos } from './repos';
 import type { AttestationItem, AuditEvent, Binding, BindingState } from './types';
 
+/** viewer: per-user canView, full detail. issueSafe: for files attached to the issue (visible to every issue viewer). */
+export type EvidenceMode = 'viewer' | 'issueSafe';
+
+export interface EvidenceAttestation {
+  toVersion: number;
+  implementer: string;
+  checker?: string;
+  checkerSignedAt?: string;
+  sealHash?: string;
+  sealValid: boolean;
+  items: AttestationItem[];
+}
+
 export interface EvidenceBinding {
   id: string;
   pageId: string;
@@ -12,21 +25,14 @@ export interface EvidenceBinding {
   supersededBy?: number;
   restricted: boolean;
   title?: string;
-  approvedVersions?: Array<{ version: number; approvedBy: string; approvedAt: string; contentHash?: string }>;
-  attestation?: {
-    toVersion: number;
-    implementer: string;
-    checker?: string;
-    checkerSignedAt?: string;
-    sealHash?: string;
-    sealValid: boolean;
-    items: AttestationItem[];
-  };
-  override?: Binding['override'];
+  approvedVersions?: Array<{ version: number; approvedBy?: string; approvedAt?: string; contentHash?: string }>;
+  attestations?: EvidenceAttestation[];
+  override?: Partial<NonNullable<Binding['override']>> & { redacted?: true };
 }
 
 export interface EvidencePack {
   schema: 'canon-evidence/1';
+  mode: EvidenceMode;
   issueKey: string;
   generatedAt: string;
   chain: { ok: boolean; count: number; brokenAt?: number; headHash: string | null };
@@ -34,15 +40,59 @@ export interface EvidencePack {
   audit: AuditEvent[];
 }
 
+/** Payload keys that hold only numbers, ids or hashes. Everything else is dropped in issueSafe mode. */
+export const SAFE_PAYLOAD_KEYS = [
+  'pageId',
+  'bindingId',
+  'version',
+  'toVersion',
+  'fromVersion',
+  'forVersion',
+  'sealHash',
+  'headHash',
+  'files',
+  'itemId',
+  'action',
+  'priorState',
+] as const;
+
+const isScalarSafe = (v: unknown): boolean => typeof v === 'number' || typeof v === 'string' || v === null;
+
+export function redactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  let dropped = false;
+  for (const [k, v] of Object.entries(payload)) {
+    const ok =
+      (SAFE_PAYLOAD_KEYS as readonly string[]).includes(k) &&
+      (isScalarSafe(v) || (k === 'files' && Array.isArray(v) && v.every((x) => typeof x === 'string')));
+    if (ok) out[k] = v;
+    else dropped = true;
+  }
+  if (dropped) out.redacted = true;
+  return out;
+}
+
 export async function buildEvidence(
   repos: Repos,
-  p: { issueKey: string; now: string; canView(pageId: string): Promise<boolean> },
+  p: { issueKey: string; now: string; canView(pageId: string): Promise<boolean>; mode?: EvidenceMode },
 ): Promise<EvidencePack> {
-  const audit = await repos.audit.list(p.issueKey);
-  const c = verifyChain(audit);
+  const mode: EvidenceMode = p.mode ?? 'viewer';
+  const safe = mode === 'issueSafe';
+  const fullAudit = await repos.audit.list(p.issueKey);
+  const c = verifyChain(fullAudit);
   const chain: EvidencePack['chain'] = c.ok
-    ? { ok: true, count: c.count, headHash: audit.length > 0 ? c.head : null }
-    : { ok: false, count: audit.length, brokenAt: c.brokenAt, headHash: null };
+    ? { ok: true, count: fullAudit.length, headHash: fullAudit.length > 0 ? c.head : null }
+    : { ok: false, count: fullAudit.length, brokenAt: c.brokenAt, headHash: null };
+
+  const attestedVersions = (bindingId: string): number[] =>
+    fullAudit
+      .filter(
+        (ev) =>
+          (ev.type === 'REATTEST_STARTED' || ev.type === 'SIGNED_OFF') &&
+          ev.payload.bindingId === bindingId &&
+          typeof ev.payload.toVersion === 'number',
+      )
+      .map((ev) => ev.payload.toVersion as number);
 
   const bindings: EvidenceBinding[] = [];
   for (const b of await repos.bindings.listByIssue(p.issueKey)) {
@@ -67,34 +117,49 @@ export async function buildEvidence(
     const proc = await repos.procedures.get(b.pageId);
     const full: EvidenceBinding = { ...base };
     if (proc) {
-      full.title = proc.title;
-      full.approvedVersions = proc.approved.map((a) => ({
-        version: a.version,
-        approvedBy: a.approvedBy,
-        approvedAt: a.approvedAt,
-        contentHash: a.bodyHash,
-      }));
+      if (!safe) full.title = proc.title;
+      full.approvedVersions = proc.approved.map((a) =>
+        safe
+          ? { version: a.version, contentHash: a.bodyHash }
+          : { version: a.version, approvedBy: a.approvedBy, approvedAt: a.approvedAt, contentHash: a.bodyHash },
+      );
     }
+
+    const versions = new Set(attestedVersions(b.id));
     const target = b.supersededBy ?? proc?.currentApproved ?? null;
-    if (target !== null && target > b.boundVersion) {
-      const a = await repos.attestations.get(b.id, target);
-      if (a) {
-        full.attestation = {
-          toVersion: a.toVersion,
-          implementer: a.implementer,
-          ...(a.checker !== undefined ? { checker: a.checker } : {}),
-          ...(a.checkerSignedAt !== undefined ? { checkerSignedAt: a.checkerSignedAt } : {}),
-          ...(a.sealHash !== undefined ? { sealHash: a.sealHash } : {}),
-          sealValid: verifySeal(a),
-          items: a.items,
-        };
-      }
+    if (target !== null && target > b.boundVersion) versions.add(target);
+    const attestations: EvidenceAttestation[] = [];
+    for (const v of [...versions].sort((x, y) => x - y)) {
+      const a = await repos.attestations.get(b.id, v);
+      if (!a) continue;
+      attestations.push({
+        toVersion: a.toVersion,
+        implementer: a.implementer,
+        ...(a.checker !== undefined ? { checker: a.checker } : {}),
+        ...(a.checkerSignedAt !== undefined ? { checkerSignedAt: a.checkerSignedAt } : {}),
+        ...(a.sealHash !== undefined ? { sealHash: a.sealHash } : {}),
+        sealValid: verifySeal(a),
+        items: safe
+          ? a.items.map((i) => ({
+              itemId: i.itemId,
+              status: i.status,
+              ...(i.by !== undefined ? { by: i.by } : {}),
+              ...(i.at !== undefined ? { at: i.at } : {}),
+            }))
+          : a.items,
+      });
     }
-    if (b.override) full.override = b.override;
+    if (attestations.length > 0) full.attestations = attestations;
+    if (b.override) {
+      full.override = safe
+        ? { by: b.override.by, at: b.override.at, forVersion: b.override.forVersion, redacted: true }
+        : b.override;
+    }
     bindings.push(full);
   }
 
-  return { schema: 'canon-evidence/1', issueKey: p.issueKey, generatedAt: p.now, chain, bindings, audit };
+  const audit = safe ? fullAudit.map((ev) => ({ ...ev, payload: redactPayload(ev.payload) })) : fullAudit;
+  return { schema: 'canon-evidence/1', mode, issueKey: p.issueKey, generatedAt: p.now, chain, bindings, audit };
 }
 
 export function escapeHtml(v: unknown): string {
@@ -122,9 +187,8 @@ export function renderEvidenceHtml(pack: EvidencePack): string {
     .join('');
 
   const attestations = pack.bindings
-    .filter((b) => b.attestation)
-    .map((b) => {
-      const a = b.attestation!;
+    .flatMap((b) => (b.attestations ?? []).map((a) => ({ b, a })))
+    .map(({ b, a }) => {
       const items = a.items
         .map(
           (i) =>
@@ -154,7 +218,7 @@ export function renderEvidenceHtml(pack: EvidencePack): string {
     `.mono{font-family:monospace}.badge{display:inline-block;padding:4px 10px;border:2px solid;font-weight:bold}` +
     `.ok{color:#006644}.bad{color:#bf2600}@media print{body{margin:0}}</style></head><body>` +
     `<h1>Canon evidence pack: ${e(pack.issueKey)}</h1>` +
-    `<p>Generated at ${e(pack.generatedAt)}</p>` +
+    `<p>Generated at ${e(pack.generatedAt)} (${e(pack.mode)})</p>` +
     `<p class="badge ${pack.chain.ok ? 'ok' : 'bad'}">${e(badge)}</p>` +
     `<h2>Bindings</h2><table><tr><th>Binding</th><th>Page</th><th>Title</th><th>State</th><th>Bound v</th><th>Superseded by</th></tr>${bindingRows}</table>` +
     `<h2>Attestations</h2>${attestations || '<p>None.</p>'}` +
