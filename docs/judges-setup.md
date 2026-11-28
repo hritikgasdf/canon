@@ -5,19 +5,22 @@ Canon runs entirely on Atlassian (Forge). It needs Jira (required) and Confluenc
 ## 1. Install
 1. Open the installation link and install Canon on your site for **Jira**, then add **Confluence** when prompted (both products on the same site).
 2. Approve the scopes. Reads: `read:page:confluence`, `read:confluence-content.summary`, `read:space:confluence`, `read:jira-work`, `read:jira-user`. Writes: `write:jira-work` (the `canon.gate` issue property for JQL, evidence attachments, sample work items), `write:page:confluence` (used **only** by *Load sample data* / *Publish sample v4* to create the sample page), `storage:app`.
+   (Clean-install check, 28 Nov 2026: installing the production build with the Forge CLI needs two runs, `forge install -e production --site <site> --product jira` and then `--product confluence`, because Canon needs scopes in both products.)
 3. Open **Jira settings → Apps → Canon setup**. The setup checklist (section 7) tells you what is still missing.
 
 ## 2. Give Canon access to your procedure space (important)
 Canon reads Confluence **as the app**. In our testing the app could **not** see spaces that already existed before it was installed: page reads returned 404 and no page events arrived. Spaces created **after** install worked at once.
 
 Pick one:
-- **Recommended for judging:** create a new Confluence space (after installing Canon) and a company-managed Jira project, then open **Jira settings → Apps → Canon setup → Sample data**, enter the two keys and click **Load sample data**. It creates *SOP-PAY-014 … [Sample data]* v1–v3 (approved), 4 `[Sample]` work items with bindings, and an auto-bind mapping for `<PROJECT>/Task` (only if you have none). Rerunning it is safe.
+- **Recommended for judging:** create a new Confluence space (after installing Canon; **any new space works at once**, no permissions step needed) and a **company-managed** Jira Software project (when you create the project, choose a Kanban or Scrum template and make sure its type is *company-managed*, not team-managed; the sample loader and the workflow steps below assume it). Then open **Jira settings → Apps → Canon setup → Sample data**, enter the two keys and click **Load sample data**. It creates *SOP-PAY-014 … [Sample data]* v1–v3 (approved), 4 `[Sample]` work items with bindings, and an auto-bind mapping for `<PROJECT>/Task` (only if you have none). Rerunning it is safe.
 - **Use an existing space:** in Confluence, open *Space settings → Users → Add people and agents* for the procedure space. Search for "Canon": it lists **canon** and **Canon Procedure Guard** (type: App). Add both apps, each with a role of at least *view* access, then click *Add*. (Verified in the browser on 22 Nov 2026 (IST); Confluence now uses roles, not the older *Permissions → Apps* page.) Then open a procedure page: the Canon byline should show "not controlled", not "Canon can't read this page".
 
 If Canon can't read a page, the byline says *"Canon can't read this page. Ask an admin to give the Canon app access to this space."*, and the Jira gate **blocks** (fails closed). It never silently allows.
 
 ## 3. Add the gate to a workflow
-Jira workflow editor → the transition to Done → **Rules → Validate details → Canon gate**. Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition and re-run the checks.
+In the company-managed project: **Project settings → Workflows** → edit the project's workflow → select the **Done** transition (in a new software project this is a single global *Done* transition) → **Rules → Validate details → Canon gate** → *Update*, then **Publish** the workflow if Jira shows a draft banner. Do this for every transition into Done that you want guarded. Leave the validator's configuration empty.
+
+Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition on any work item and re-run the checks. A work item that is **not bound** to a procedure is always allowed through Done; only bound work is gated.
 
 ## 4. Show the Canon panel on every work item
 Forge issue panels are **not shown by default**. Pick one:
@@ -26,8 +29,9 @@ Forge issue panels are **not shown by default**. Pick one:
 
 (Demo site only: the panel is already pinned for project **CHG** through Jira's issue-panel pin API, so no action is needed for CHG work items.)
 
-## 5. Approvals need a second person
-"Approve vN" is refused for the person who last edited the page (separation of duties). On a single-user trial site, use the sample-data helper **Publish sample v4**. It publishes as the Canon app, so you can approve it yourself.
+## 5. Approvals and sign-off need a second person
+- **Approve vN** is refused for the person who last edited the page (separation of duties). On a single-user trial site, use the sample-data helper **Publish sample v4**. It publishes as the Canon app, so you can approve it yourself.
+- **Sign-off on the re-attestation also needs a different person.** The implementer completes the changed items, and a *checker* signs. The checker must be another Jira user who can browse the work item, and **a one-person site cannot complete a sign-off** (the independent-approver rule can't be switched off in the UI). Before the demo, invite a second user to the site and give them access to the project (*Project settings → Access/People → Add people*). Without a second user you can still see everything up to the blocked Done, the Rovo explanation, the checklist and the evidence tab, and a project admin can close the work with **Break-glass override** (reason of at least 20 characters, audited).
 
 ## 6. Known platform behaviour
 Confluence Cloud does not keep the "minor edit / don't notify watchers" flag on saved versions; it always reads back as `false`. Under the `every-major` policy, Canon therefore decides with its own diff: typo-only edits are **not** auto-approved and do not supersede tickets.
@@ -60,3 +64,11 @@ Page restrictions decide who may *read* the procedure. They don't decide who may
 
 ## 10. Rovo: how write actions are confirmed
 Creating the re-attestation checklist and assigning a checker are write actions. Rovo always shows a **confirmation card** for them, and they run only when you click **Confirm** on that card. Typing "yes" in the chat isn't enough; this is Rovo's own safety step for app actions that change data, and Canon keeps it. The agent tells you to click Confirm. Asking again after creation returns "already created" and doesn't duplicate anything. The Canon panel picks up the new checklist by itself: it re-reads when you select the Attest or Evidence tab, checks every few seconds after *Ask Canon* (up to 5 minutes) and while a work item waits for re-attestation, and refreshes when you come back to the page. If the items still aren't shown, click the Attest tab again or reload the page.
+
+## 11. Clean-install verification log
+Run on a fresh developer site on 28 Nov 2026 (IST) with the **production** build (v2.0.0), following these notes as far as the CLI and REST allowed:
+- Install into Jira and Confluence: OK.
+- A Confluence space created after install: page-created events reached Canon immediately (no permissions step).
+- A company-managed project with the **Canon gate** validator on Done: a Done move on an unbound work item was allowed (gate ran in about 0.5 s, outcome *no-binding*).
+- The steps that only work in the browser (Canon setup page, Load sample data, Publish sample v4, byline Approve, panel) are the ones listed in sections 1 to 5.
+
