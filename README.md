@@ -19,3 +19,7 @@ Canon declares a `rovo:mcp` module ("Canon procedure tools") that exposes two re
 Where it shows up (what we have actually verified, 22 Nov 2026):
 - **Rovo Studio → custom agent → Tools:** Canon's actions are listed (seen: *Get Canon gate status*, *Get approved procedure*, and the other Canon actions). Canon does **not** appear as a separate entry in Rovo Studio's MCP server list; Forge app tools are offered as tools, not as a connectable server.
 - **Third-party MCP clients (Atlassian Preview, not tested by us):** off by default. A site or org admin can enable it in Atlassian Administration → Apps → Sites → *your site* → Connected apps → Canon → choose the tools. Clients then connect to `https://mcp.atlassian.com/forge/12bf2743-b147-41da-9c66-4f171fa7bdfd` with OAuth, and calls run with the connecting user's permissions. See https://developer.atlassian.com/platform/forge/manifest-reference/modules/rovo-mcp/ .
+
+## License
+
+MIT. See [LICENSE](LICENSE).
