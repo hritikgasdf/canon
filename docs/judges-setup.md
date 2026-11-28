@@ -5,8 +5,9 @@ Canon runs entirely on Atlassian (Forge). It needs Jira (required) and Confluenc
 ## 1. Install
 1. Open the installation link and install Canon on your site for **Jira**, then add **Confluence** when prompted (both products on the same site).
 2. Approve the scopes. Reads: `read:page:confluence`, `read:confluence-content.summary`, `read:space:confluence`, `read:jira-work`, `read:jira-user`. Writes: `write:jira-work` (the `canon.gate` issue property for JQL, evidence attachments, sample work items), `write:page:confluence` (used **only** by *Load sample data* / *Publish sample v4* to create the sample page), `storage:app`.
-   (Clean-install check, 28 Nov 2026: installing the production build with the Forge CLI needs two runs, `forge install -e production --site <site> --product jira` and then `--product confluence`, because Canon needs scopes in both products.)
 3. Open **Jira settings → Apps → Canon setup**. The setup checklist (section 7) tells you what is still missing.
+
+*Installing from the command line instead of the link:* run `forge install -e production --site <site> --product jira`, then the same with `--product confluence`; Canon needs scopes in both products. (Checked on a clean site on 28 Nov 2026.)
 
 ## 2. Give Canon access to your procedure space (important)
 Canon reads Confluence **as the app**. In our testing the app could **not** see spaces that already existed before it was installed: page reads returned 404 and no page events arrived. Spaces created **after** install worked at once.
@@ -20,7 +21,7 @@ If Canon can't read a page, the byline says *"Canon can't read this page. Ask an
 ## 3. Add the gate to a workflow
 In the company-managed project: **Project settings → Workflows** → edit the project's workflow → select the **Done** transition (in a new software project this is a single global *Done* transition) → **Rules → Validate details → Canon gate** → *Update*, then **Publish** the workflow if Jira shows a draft banner. Do this for every transition into Done that you want guarded. Leave the validator's configuration empty.
 
-Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition on any work item and re-run the checks. A work item that is **not bound** to a procedure is always allowed through Done; only bound work is gated.
+Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition on any work item and re-run the checks. A work item that is **not bound** to a procedure is allowed through Done **by design** (Canon gates bound work only); if Canon can't verify a bound item, Done is blocked.
 
 ## 4. Show the Canon panel on every work item
 Forge issue panels are **not shown by default**. Pick one:
@@ -66,9 +67,9 @@ Page restrictions decide who may *read* the procedure. They don't decide who may
 Creating the re-attestation checklist and assigning a checker are write actions. Rovo always shows a **confirmation card** for them, and they run only when you click **Confirm** on that card. Typing "yes" in the chat isn't enough; this is Rovo's own safety step for app actions that change data, and Canon keeps it. The agent tells you to click Confirm. Asking again after creation returns "already created" and doesn't duplicate anything. The Canon panel picks up the new checklist by itself: it re-reads when you select the Attest or Evidence tab, checks every few seconds after *Ask Canon* (up to 5 minutes) and while a work item waits for re-attestation, and refreshes when you come back to the page. If the items still aren't shown, click the Attest tab again or reload the page.
 
 ## 11. Clean-install verification log
-Run on a fresh developer site on 28 Nov 2026 (IST) with the **production** build (v2.0.0), following these notes as far as the CLI and REST allowed:
+Run on a fresh developer site on 28 Nov 2026 (IST) with the **production** deployment (Forge app version 2.0.0; the repository's package.json version is unrelated), following these notes as far as the CLI and REST allowed:
 - Install into Jira and Confluence: OK.
-- A Confluence space created after install: page-created events reached Canon immediately (no permissions step).
-- A company-managed project with the **Canon gate** validator on Done: a Done move on an unbound work item was allowed (gate ran in about 0.5 s, outcome *no-binding*).
+- A Confluence space created after install: Forge function logs show the `avi:confluence:created:page` event reaching Canon about 2 s after the page was created (no permissions step).
+- A company-managed project with the **Canon gate** validator on Done: a Done move on an unbound work item was allowed (Forge log: `canon-gate … result:true, reason:no-binding, totalMs:535`).
 - The steps that only work in the browser (Canon setup page, Load sample data, Publish sample v4, byline Approve, panel) are the ones listed in sections 1 to 5.
 
