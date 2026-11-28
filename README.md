@@ -5,7 +5,7 @@ Canon pins the approved Confluence procedure version a Jira change started under
 ## Setup (read first)
 See **[docs/judges-setup.md](docs/judges-setup.md)**. Most important: **Canon must have access to the procedure space.** Spaces that existed before install are invisible to the app until an admin adds Canon in *Space settings → Users → Add people and agents* (search "Canon", add **canon** and **Canon Procedure Guard**, each with at least view access). The other way is to create a new space after install and use *Load sample data* there. Without access, the gate fails closed.
 
-After install, open **Jira settings → Apps → Canon setup**: a checklist shows Confluence connected, procedure-space access, whether the Canon gate has run on a Done transition, policy, and auto-bind mappings, each with its fix. The same page holds gate settings, *Load sample data*, *Publish sample v4* and *Reset sample data*.
+After install, open **Jira settings → Marketplace apps → Canon setup**: a checklist shows Confluence connected, procedure-space access, whether the Canon gate has run on a Done transition, policy, and auto-bind mappings, each with its fix. The same page holds gate settings, *Load sample data*, *Publish sample v4* and *Reset sample data*.
 
 **Roles judges need:** Jira admin for *Canon setup*; **project admin** (the project's *Administrators* role, which grants *Administer Projects*) or Jira admin for break-glass override and *Attach evidence pack*. In Jira Cloud a Jira admin does not automatically hold *Administer Projects*, so Canon accepts either. The *Canon register* is under the project's top tab bar: **More → Canon register**.
 

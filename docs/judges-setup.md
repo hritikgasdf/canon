@@ -5,7 +5,7 @@ Canon runs entirely on Atlassian (Forge). It needs Jira (required) and Confluenc
 ## 1. Install
 1. Open the installation link and install Canon on your site for **Jira**, then add **Confluence** when prompted (both products on the same site).
 2. Approve the scopes. Reads: `read:page:confluence`, `read:confluence-content.summary`, `read:space:confluence`, `read:jira-work`, `read:jira-user`. Writes: `write:jira-work` (the `canon.gate` issue property for JQL, evidence attachments, sample work items), `write:page:confluence` (used **only** by *Load sample data* / *Publish sample v4* to create the sample page), `storage:app`.
-3. Open **Jira settings → Apps → Canon setup**. The setup checklist (section 7) tells you what is still missing.
+3. Open **Jira settings → Marketplace apps → Canon setup**. The setup checklist (section 7) tells you what is still missing.
 
 *Installing from the command line instead of the link:* run `forge install -e production --site <site> --product jira`, then the same with `--product confluence`; Canon needs scopes in both products. (Checked on a clean site on 28 Nov 2026.)
 
@@ -19,7 +19,7 @@ Pick one:
 If Canon can't read a page, the byline says *"Canon can't read this page. Ask an admin to give the Canon app access to this space."*, and the Jira gate **blocks** (fails closed). It never silently allows.
 
 ## 3. Add the gate to a workflow
-In the company-managed project: **Project settings → Workflows** → edit the project's workflow → select the **Done** transition (in a new software project this is a single global *Done* transition) → **Rules → Validate details → Canon gate** → *Update*, then **Publish** the workflow if Jira shows a draft banner. Do this for every transition into Done that you want guarded. Leave the validator's configuration empty.
+**Jira settings → Work items → Workflows** → find the project's workflow (a new software project uses *Software Simplified Workflow for Project <KEY>*) → **Actions → Edit** → click the **Any** badge on the **Done** transition (in a new software project it is a single global transition into Done) → **Rules → Validate details → Canon gate** → *Update*, then **Publish** the workflow if Jira shows a draft banner. (Checked in the browser on a fresh site, 28 Nov 2026.) Do this for every transition into Done that you want guarded. Leave the validator's configuration empty.
 
 Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition on any work item and re-run the checks. A work item that is **not bound** to a procedure is allowed through Done **by design** (Canon gates bound work only); if Canon can't verify a bound item, Done is blocked.
 
@@ -35,7 +35,7 @@ Forge issue panels are **not shown by default**. On a work item, click the **app
 ## 6. Known platform behaviour
 Confluence Cloud does not keep the "minor edit / don't notify watchers" flag on saved versions; it always reads back as `false`. Under the `every-major` policy, Canon therefore decides with its own diff: typo-only edits are **not** auto-approved and do not supersede tickets.
 
-## 7. Setup checklist (Jira settings → Apps → Canon setup)
+## 7. Setup checklist (Jira settings → Marketplace apps → Canon setup)
 Jira admins only. Each check is OK, CHECK or FIX, with the fix shown inline:
 | Check | OK when | Fix |
 |---|---|---|
@@ -49,7 +49,7 @@ Jira admins only. Each check is OK, CHECK or FIX, with the fix shown inline:
 The same page edits gate settings (Block/Warn, revision policy, auto-bind mappings) and holds **Load sample data** / **Publish sample v4**.
 
 ## 8. Roles, and where things are
-- **Canon setup** (Jira settings → Apps → Canon setup): Jira administrators only.
+- **Canon setup** (Jira settings → Marketplace apps → Canon setup): Jira administrators only.
 - **Break-glass override** and **Attach evidence pack**: project admins, meaning the user has *Administer Projects* on the project (normally through the project's **Administrators** role: Project settings → Access / People → add the user with role *Administrators*). Jira admins are accepted too. In Jira Cloud, being a Jira admin does not by itself grant *Administer Projects*.
 - **Canon register:** open the project, then the top tab bar → **More → Canon register** (it is not in the sidebar).
 - **Reset sample data** (Canon setup → Sample data): retires the current sample work items (their bindings are closed with a `SAMPLE_RESET` audit event), renames the old sample page, and loads a fresh v1–v3 page with new work items, so the v3 → v4 demo can be replayed.
