@@ -70,7 +70,9 @@ describe('runSetupChecks', () => {
   });
   it('gate warns with no heartbeat and is ok with one', async () => {
     const { repos, deps } = mk();
-    expect((await get(deps, 'gate')).status).toBe('warn');
+    const warn = await get(deps, 'gate');
+    expect(warn.status).toBe('warn');
+    expect(warn.fix).toContain('Rules → Validate details → Canon gate');
     await repos.gateHeartbeat.put({ at: '2026-01-01T00:00:00Z', issueKey: 'CAN-1', outcome: 'allow' });
     expect(await get(deps, 'gate')).toMatchObject({
       status: 'ok',
