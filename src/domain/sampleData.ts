@@ -1,4 +1,4 @@
-import { approveVersion, markControlled, type PageMeta } from './approve';
+import { ApproveError, approveVersion, markControlled, type PageMeta } from './approve';
 import { appendAudit } from './audit';
 import { bindIssue, BindError } from './bind';
 import type { Repos } from './repos';
@@ -57,6 +57,30 @@ async function bindTolerant(deps: SampleDeps, issueKey: string, pageId: string) 
   }
 }
 
+/**
+ * Makes sure `version` is in the procedure's approved list. A page-event handler writing at the same
+ * moment can, rarely, overwrite the approval with an older copy; repair it (bounded) instead of failing.
+ */
+async function ensureApproved(deps: SampleDeps, pageId: string, version: number): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const proc = await deps.repos.procedures.get(pageId);
+    if (proc?.approved.some((a) => a.version === version) === true && (proc.currentApproved ?? 0) >= version) return;
+    try {
+      await approveVersion(deps.repos, deps.fetchBody, await deps.getPageMeta(pageId), {
+        version,
+        actor: SAMPLE_APPROVER,
+        at: deps.now(),
+      });
+    } catch (e) {
+      if (!(e instanceof ApproveError) || e.code !== 'ALREADY_APPROVED') throw e;
+    }
+  }
+  const last = await deps.repos.procedures.get(pageId);
+  if (last?.approved.some((a) => a.version === version) !== true) {
+    throw new Error(`Sample page version ${version} could not be approved. Try again.`);
+  }
+}
+
 export async function loadSampleData(
   deps: SampleDeps,
   input: { spaceKey: string; projectKey: string; actor: string },
@@ -101,6 +125,7 @@ export async function loadSampleData(
       actor: SAMPLE_APPROVER,
       at: deps.now(),
     });
+    await ensureApproved(deps, pageId, 2);
   }
 
   const issues = {} as SampleState['issues'];
@@ -137,6 +162,7 @@ export async function loadSampleData(
       actor: SAMPLE_APPROVER,
       at: deps.now(),
     });
+    await ensureApproved(deps, pageId, 3);
   }
 
   for (const r of ['hero', 'second'] as const) {

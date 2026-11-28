@@ -55,24 +55,31 @@ export async function approveVersion(
   input: { version: number; actor: string; at: string; isIssueOpen?: (k: string) => Promise<boolean> },
 ): Promise<{ procedure: Procedure; supersede: SupersedeResult | null }> {
   const { version, actor, at, isIssueOpen } = input;
-  const proc = await repos.procedures.get(meta.pageId);
-  if (!proc || !proc.controlled) throw new ApproveError('NOT_CONTROLLED', 'This page is not a controlled procedure.');
-  if (version !== meta.currentVersion) {
-    throw new ApproveError('NOT_LATEST', `Version ${version} is not the latest (${meta.currentVersion}).`);
-  }
-  const previous = proc.currentApproved;
-  if (previous !== null) {
-    if (version === previous) throw new ApproveError('ALREADY_APPROVED', `Version ${version} is already approved.`);
-    if (version < previous) {
-      throw new ApproveError('STALE_VERSION', `Version ${version} is older than approved version ${previous}.`);
-    }
-  }
   const settings = await repos.settings.get();
-  if (settings.requireIndependentApprover && actor === meta.lastEditorId) {
-    throw new ApproveError('SELF_APPROVAL', 'The last editor cannot approve their own changes.');
-  }
+  const check = (proc: Procedure | null): Procedure => {
+    if (!proc || !proc.controlled) throw new ApproveError('NOT_CONTROLLED', 'This page is not a controlled procedure.');
+    if (version !== meta.currentVersion) {
+      throw new ApproveError('NOT_LATEST', `Version ${version} is not the latest (${meta.currentVersion}).`);
+    }
+    const prev = proc.currentApproved;
+    if (prev !== null) {
+      if (version === prev) throw new ApproveError('ALREADY_APPROVED', `Version ${version} is already approved.`);
+      if (version < prev) {
+        throw new ApproveError('STALE_VERSION', `Version ${version} is older than approved version ${prev}.`);
+      }
+    }
+    if (settings.requireIndependentApprover && actor === meta.lastEditorId) {
+      throw new ApproveError('SELF_APPROVAL', 'The last editor cannot approve their own changes.');
+    }
+    return proc;
+  };
+  check(await repos.procedures.get(meta.pageId));
 
+  // Do the slow work (snapshot fetch) first, then re-read the procedure right before writing, so a
+  // page-event handler that wrote in the meantime is not overwritten with a stale copy.
   const snap = await ensureSnapshot(repos, fetchBody, meta.pageId, version);
+  const proc = check(await repos.procedures.get(meta.pageId));
+  const previous = proc.currentApproved;
   const procedure: Procedure = {
     ...proc,
     approved: [
