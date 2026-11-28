@@ -6,7 +6,7 @@ behaviour and did not re-test it; **[manual]** means it was checked on the demo 
 
 ## 1. Egress and hosting
 - [x] **No egress.** `manifest.yml` has no `permissions.external` block and no `remotes`. The only network calls are
-      `@forge/api` `requestJira` / `requestConfluence` to the host site. No `fetch(`, no URLs in `src/`. **[test]** (`manifest.test.ts`)
+      `@forge/api` `requestJira` / `requestConfluence` to the host site. No `fetch(`, no absolute URLs in `src/`. **[test]** (`manifest.test.ts`)
 - [x] **No webtrigger, no dev harness in the submitted build.** `npm run release:check` fails if one is present, and the
       production manifest test fails too. See `docs/release.md`. **[test]**
 - [x] **Runs on Atlassian.** Hosting, storage and compute are all Forge; verified with `forge eligibility` at release time (see `docs/release.md`).
@@ -54,7 +54,7 @@ Trade-off: because Canon cannot read workflow configuration, the setup page repo
 - [x] The two write actions (`canon-create-reattest-checklist`, `canon-assign-checker`) are declared `CREATE` / `UPDATE`, so Rovo shows its **Confirm card** and runs them only after a click. A typed "yes" never runs an action. **[test]** (`manifest.test.ts`), **[manual]** (browser check, `docs/judges-setup.md` section 10).
 - [x] Even after confirmation the domain re-checks everything. Creating the checklist writes only suggested task text plus an audit event (the confirming user becomes the implementer if re-attestation had not started; it needs the procedure to be visible to that user and every item id to exist in the delta). Only the implementer can assign a checker; the checker must differ from the implementer and be able to browse the work item; an existing checklist's suggestions are never overwritten. **[test]** (`rovo.test.ts`)
 - [x] The MCP server (`rovo:mcp`) exposes only the two `GET` actions. **[test]**
-- [x] Error text from KVS or Confluence is never passed to the model: failures return a fixed "UNVERIFIED" message and the detail goes to the log. **[test]**
+- [x] Error text from KVS or Confluence is never passed to the model: failures return a fixed "UNVERIFIED" message and the detail goes to the log (`rovoActions.ts`; code-reviewed, not separately tested).
 - [x] The approved-procedure tool returns **approved** text only, never a draft or superseded version, capped at 200 nodes. **[test]**
 
 ## 6. Data stored, privacy and PII

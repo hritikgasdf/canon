@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -72,5 +73,16 @@ describe('security posture (docs/security.md)', () => {
     const writes = actions.filter((a) => a.actionVerb !== 'GET').map((a) => a.key);
     expect(writes.sort()).toEqual(['canon-assign-checker', 'canon-create-reattest-checklist']);
   });
+  it('source makes no direct network calls (no fetch, no XHR, no absolute URLs outside comments)', () => {
+    const files = execSync('git ls-files src', { encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => /\.tsx?$/.test(f));
+    expect(files.length).toBeGreaterThan(10);
+    for (const f of files) {
+      const code = readFileSync(f, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+      expect(code, f).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|https?:\/\//);
+    }
+  });
 });
-
