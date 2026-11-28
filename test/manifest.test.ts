@@ -1,5 +1,5 @@
-import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -74,9 +74,12 @@ describe('security posture (docs/security.md)', () => {
     expect(writes.sort()).toEqual(['canon-assign-checker', 'canon-create-reattest-checklist']);
   });
   it('source makes no direct network calls (no fetch, no XHR, no absolute URLs outside comments)', () => {
-    const files = execSync('git ls-files src', { encoding: 'utf8' })
-      .split('\n')
-      .filter((f) => /\.tsx?$/.test(f));
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    // Works in a git checkout and in `git archive` output. The gitignored dev harness is never shipped.
+    const files = walk('src').filter((f) => /\.tsx?$/.test(f) && !/devHarness/.test(f));
     expect(files.length).toBeGreaterThan(10);
     for (const f of files) {
       const code = readFileSync(f, 'utf8')
