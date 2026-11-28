@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { handlePageEvent, type PageEventDeps } from '../src/domain/pageEvent';
 import type { PageMeta } from '../src/domain/approve';
+import { createMemoryRepos } from '../src/domain/memoryRepos';
 import type { Repos } from '../src/domain/repos';
 import {
   DEFAULT_SETTINGS,
@@ -340,3 +341,67 @@ describe('handlePageEvent', () => {
     expect((await repos.procedures.get(PAGE))?.lastSeenVersion).toBe(3);
   });
 });
+
+describe('page event does not overwrite a concurrent approval', () => {
+  it('re-reads the procedure before writing lastSeenVersion', async () => {
+    const repos = createMemoryRepos();
+    const base: Procedure = {
+      pageId: PAGE,
+      title: 'P',
+      controlled: true,
+      policy: 'approved-only',
+      approved: [],
+      currentApproved: null,
+      lastSeenVersion: 1,
+    };
+    await repos.procedures.put(base);
+    const origGet = repos.procedures.get.bind(repos.procedures);
+    let raced = false;
+    repos.procedures.get = async (id) => {
+      const cur = await origGet(id);
+      if (!raced && cur) {
+        raced = true;
+        // an approval lands after this (stale) read
+        await repos.procedures.put({
+          ...cur,
+          approved: [{ version: 2, approvedBy: 'x', approvedAt: NOW, bodyHash: 'h', minorEdit: false }],
+          currentApproved: 2,
+        });
+      }
+      return cur;
+    };
+    const deps: PageEventDeps = {
+      getPageMeta: async () => {
+        throw new Error('not needed');
+      },
+      fetchBody: async () => '',
+      now: () => NOW,
+    };
+    const r = await handlePageEvent(repos, deps, {
+      eventType: 'avi:confluence:updated:page',
+      content: { id: PAGE, version: { number: 3 } },
+    });
+    expect(r.action).toBe('DRAFT_SEEN');
+    const after = await repos.procedures.get(PAGE);
+    expect(after?.currentApproved).toBe(2);
+    expect(after?.approved).toHaveLength(1);
+    expect(after?.lastSeenVersion).toBe(3);
+  });
+
+  it('does not write when the version is not newer than lastSeenVersion', async () => {
+    const repos = createMemoryRepos();
+    await repos.procedures.put({
+      pageId: PAGE, title: 'P', controlled: true, policy: 'approved-only', approved: [], currentApproved: null, lastSeenVersion: 5,
+    });
+    let writes = 0;
+    const origPut = repos.procedures.put.bind(repos.procedures);
+    repos.procedures.put = async (p) => {
+      writes++;
+      await origPut(p);
+    };
+    const deps: PageEventDeps = { getPageMeta: async () => { throw new Error('x'); }, fetchBody: async () => '', now: () => NOW };
+    await handlePageEvent(repos, deps, { eventType: 'avi:confluence:updated:page', content: { id: PAGE, version: { number: 5 } } });
+    expect(writes).toBe(0);
+  });
+});
+

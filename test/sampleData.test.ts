@@ -110,6 +110,32 @@ describe('duplicate page title', () => {
   });
 });
 
+describe('lost-update race with a page-event handler', () => {
+  it('repairs an approval that a concurrent write overwrote, instead of failing to bind', async () => {
+    const { deps, repos } = makeDeps();
+    const orig = repos.procedures.put.bind(repos.procedures);
+    const clobbered = new Set<number>();
+    repos.procedures.put = async (p) => {
+      await orig(p);
+      const v = p.approved.at(-1)?.version;
+      if (v !== undefined && !clobbered.has(v) && p.approved.length === v - 1) {
+        // simulate a stale event handler writing its older copy right after the approval
+        clobbered.add(v);
+        await orig({ ...p, approved: p.approved.slice(0, -1), currentApproved: p.approved.at(-2)?.version ?? null });
+      }
+    };
+    const r = await loadSampleData(deps, input);
+    expect(r.status).toBe('LOADED');
+    expect([...clobbered]).toEqual([2, 3]);
+    const proc = await repos.procedures.get(r.state.pageId);
+    expect(proc?.currentApproved).toBe(3);
+    expect(proc?.approved.map((a) => a.version)).toEqual(expect.arrayContaining([2, 3]));
+    const hero = await repos.bindings.get(`${r.state.issues.hero}.${r.state.pageId}`);
+    expect(hero?.boundVersion).toBe(3);
+    expect(hero?.state).toBe('CURRENT');
+  });
+});
+
 describe('loadSampleData', () => {
   it('creates page versions 1..3 with the expected bodies', async () => {
     const { deps, pages } = makeDeps();

@@ -50,11 +50,16 @@ export async function handlePageEvent(repos: Repos, deps: PageEventDeps, event: 
     if (!procedure || !procedure.controlled) return { action: 'IGNORED', reason: 'not controlled' };
 
     const now = deps.now();
-    await repos.procedures.put({
-      ...procedure,
-      lastSeenVersion: Math.max(procedure.lastSeenVersion ?? 0, version),
-      lastCheckedAt: now,
-    });
+    // Write only when something changes, and re-read right before writing: a concurrent approval
+    // (for example the sample loader's) must never be overwritten with this handler's older copy.
+    if (version > (procedure.lastSeenVersion ?? 0)) {
+      const fresh = (await repos.procedures.get(pageId)) ?? procedure;
+      await repos.procedures.put({
+        ...fresh,
+        lastSeenVersion: Math.max(fresh.lastSeenVersion ?? 0, version),
+        lastCheckedAt: now,
+      });
+    }
 
     if (procedure.policy === 'every-major') {
       const meta = await deps.getPageMeta(pageId);
