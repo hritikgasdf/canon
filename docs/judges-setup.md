@@ -13,7 +13,7 @@ Canon runs entirely on Atlassian (Forge). It needs Jira (required) and Confluenc
 Canon reads Confluence **as the app**. In our testing the app could **not** see spaces that already existed before it was installed: page reads returned 404 and no page events arrived. Spaces created **after** install worked at once.
 
 Pick one:
-- **Recommended for judging:** create a new Confluence space (after installing Canon; **any new space works at once**, no permissions step needed) and a **company-managed** Jira Software project (when you create the project, choose a Kanban or Scrum template and make sure its type is *company-managed*, not team-managed; the sample loader and the workflow steps below assume it). Then open **Jira settings → Apps → Canon setup → Sample data**, enter the two keys and click **Load sample data**. It creates *SOP-PAY-014 … [Sample data]* v1–v3 (approved), 4 `[Sample]` work items with bindings, and an auto-bind mapping for `<PROJECT>/Task` (only if you have none). Rerunning it is safe.
+- **Recommended for judging:** create a new Confluence space (after installing Canon; **any new space works at once**, no permissions step needed) and a **company-managed** Jira Software project (when you create the project, choose a Kanban or Scrum template and make sure its type is *company-managed*, not team-managed; the sample loader and the workflow steps below assume it). Then open **Jira settings → Apps → Canon setup → Sample data**, enter the two keys and click **Load sample data**. It creates *SOP-PAY-014 … [Sample data]* v1–v3 (approved), 4 `[Sample]` work items with bindings, and an auto-bind mapping for `<PROJECT>/Task` (only if you have none). Rerunning it is safe. If it ever answers *Something went wrong. Try again.*, wait a few seconds and click it once more; a failed attempt can leave a few extra `[Sample]` work items and an extra sample page (harmless; delete them). If the page title is already taken, the loader adds a UTC timestamp to the title, so it may read *… [Sample data] (2026-11-28 11:48 UTC)*.
 - **Use an existing space:** in Confluence, open *Space settings → Users → Add people and agents* for the procedure space. Search for "Canon": it lists **canon** and **Canon Procedure Guard** (type: App). Add both apps, each with a role of at least *view* access, then click *Add*. (Verified in the browser on 22 Nov 2026 (IST); Confluence now uses roles, not the older *Permissions → Apps* page.) Then open a procedure page: the Canon byline should show "not controlled", not "Canon can't read this page".
 
 If Canon can't read a page, the byline says *"Canon can't read this page. Ask an admin to give the Canon app access to this space."*, and the Jira gate **blocks** (fails closed). It never silently allows.
@@ -23,10 +23,8 @@ In the company-managed project: **Project settings → Workflows** → edit the 
 
 Forge apps can't read workflow configuration without an admin-level scope, so the setup checklist instead reports when the gate **last ran** (it records a heartbeat on each Done attempt, at most every 10 minutes). After adding the validator, try one Done transition on any work item and re-run the checks. A work item that is **not bound** to a procedure is allowed through Done **by design** (Canon gates bound work only); if Canon can't verify a bound item, Done is blocked.
 
-## 4. Show the Canon panel on every work item
-Forge issue panels are **not shown by default**. Pick one:
-- **(a) Admin, once per site:** a Jira admin opens any work item, then the Canon panel's ••• menu → *Show for all work items*.
-- **(b) Per user:** on a work item, click *View app actions → Canon*.
+## 4. Open the Canon panel on a work item
+Forge issue panels are **not shown by default**. On a work item, click the **apps icon** just under the work item title (next to the **+** button), then choose **Canon**. Do this on any work item where you don't see the panel; the ••• menu has no Canon option. (Checked in the browser on a fresh site, 28 Nov 2026.)
 
 (Demo site only: the panel is already pinned for project **CHG** through Jira's issue-panel pin API, so no action is needed for CHG work items.)
 
