@@ -1,6 +1,6 @@
 // Forge adapter: real SampleDeps. Every call is made as the app.
 import api, { route } from '@forge/api';
-import type { SampleDeps } from '../domain/sampleData';
+import { isTitleConflict, PageTitleConflictError, type SampleDeps } from '../domain/sampleData';
 import { createAppRepos } from './kvsRepos';
 import { fetchBody, getPageMeta } from './confluence';
 
@@ -24,14 +24,16 @@ export async function findSpaceId(spaceKey: string): Promise<string> {
 }
 
 export async function createPage(spaceId: string, title: string, xhtml: string): Promise<{ id: string }> {
-  const res = await ok(
-    await api.asApp().requestConfluence(route`/wiki/api/v2/pages`, {
-      method: 'POST',
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ spaceId, status: 'current', title, body: { representation: 'storage', value: xhtml } }),
-    }),
-    'Confluence create page',
-  );
+  const created = await api.asApp().requestConfluence(route`/wiki/api/v2/pages`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ spaceId, status: 'current', title, body: { representation: 'storage', value: xhtml } }),
+  });
+  if (!created.ok && created.status === 400) {
+    const text = await created.text().catch(() => '');
+    if (isTitleConflict(created.status, text)) throw new PageTitleConflictError();
+  }
+  const res = await ok(created, 'Confluence create page');
   const j = (await res.json()) as { id?: unknown };
   if (typeof j.id !== 'string') throw new Error('Confluence create page returned no id');
   return { id: j.id };

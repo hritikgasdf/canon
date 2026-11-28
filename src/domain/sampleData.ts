@@ -20,6 +20,19 @@ export type SampleDeps = {
   moveIssueToCategory(key: string, category: 'indeterminate' | 'done'): Promise<void>;
 };
 
+/** Thrown by createPage when the space already has a page with that title (Confluence enforces unique titles per space). */
+export class PageTitleConflictError extends Error {
+  constructor(message = 'A page with this title already exists in the space.') {
+    super(message);
+    this.name = 'PageTitleConflictError';
+  }
+}
+
+/** True when a failed (HTTP 400) create-page response says the title is already used in the space. */
+export function isTitleConflict(status: number, bodyText: string): boolean {
+  return status === 400 && /already exists|same title/i.test(bodyText);
+}
+
 export const SAMPLE_APPROVER = 'sample:priya-nair';
 export const SAMPLE_IMPLEMENTER = 'sample:arjun-mehta';
 
@@ -64,13 +77,24 @@ export async function loadSampleData(
   // Page: only created when missing. The app is the last editor, so the approver persona passes SoD.
   const freshPage = !(sameTarget && pageLives);
   let pageId: string;
+  let sampleTitle = SAMPLE_PAGE_TITLE;
   if (!freshPage) {
     pageId = prior.pageId;
   } else {
     const spaceId = await deps.findSpaceId(spaceKey);
-    const page = await deps.createPage(spaceId, SAMPLE_PAGE_TITLE, `<p><em>Initial draft.</em></p>${SAMPLE_V2_XHTML}`);
+    const draft = `<p><em>Initial draft.</em></p>${SAMPLE_V2_XHTML}`;
+    let page: { id: string };
+    try {
+      page = await deps.createPage(spaceId, SAMPLE_PAGE_TITLE, draft);
+    } catch (e) {
+      if (!(e instanceof PageTitleConflictError)) throw e;
+      // Title already taken (for example a half-finished earlier load): retry once with a unique suffix.
+      const stamp = deps.now().slice(0, 16).replace('T', ' ');
+      page = await deps.createPage(spaceId, `${SAMPLE_PAGE_TITLE} (${stamp} UTC)`, draft);
+    }
     pageId = page.id;
-    await deps.updatePage(pageId, SAMPLE_PAGE_TITLE, SAMPLE_V2_XHTML, 2);
+    sampleTitle = (await deps.getPageMeta(pageId)).title;
+    await deps.updatePage(pageId, sampleTitle, SAMPLE_V2_XHTML, 2);
     await markControlled(repos, await deps.getPageMeta(pageId), { actor, at: deps.now(), policy: 'approved-only' });
     await approveVersion(repos, deps.fetchBody, await deps.getPageMeta(pageId), {
       version: 2,
@@ -107,7 +131,7 @@ export async function loadSampleData(
   }
 
   if (freshPage) {
-    await deps.updatePage(pageId, SAMPLE_PAGE_TITLE, SAMPLE_V3_XHTML, 3);
+    await deps.updatePage(pageId, sampleTitle, SAMPLE_V3_XHTML, 3);
     await approveVersion(repos, deps.fetchBody, await deps.getPageMeta(pageId), {
       version: 3,
       actor: SAMPLE_APPROVER,

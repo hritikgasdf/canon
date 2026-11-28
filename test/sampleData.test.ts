@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { approveVersion } from '../src/domain/approve';
 import { createMemoryRepos } from '../src/domain/memoryRepos';
-import { loadSampleData, publishSampleV4, resetSampleData, SAMPLE_SUMMARIES, type SampleDeps } from '../src/domain/sampleData';
+import { isTitleConflict, loadSampleData, PageTitleConflictError, publishSampleV4, resetSampleData, SAMPLE_SUMMARIES, type SampleDeps } from '../src/domain/sampleData';
 import { SAMPLE_V2_XHTML, SAMPLE_V3_XHTML, SAMPLE_V4_XHTML } from '../src/domain/sampleContent';
 
 function makeDeps() {
@@ -61,6 +61,54 @@ function makeDeps() {
 }
 
 const input = { spaceKey: 'DOCS', projectKey: 'CHG', actor: 'admin' };
+
+describe('duplicate page title', () => {
+  it('retries once with a unique title and finishes loading', async () => {
+    const { deps, pages } = makeDeps();
+    const create = deps.createPage;
+    const titles: string[] = [];
+    let first = true;
+    deps.createPage = async (space, title, xhtml) => {
+      titles.push(title);
+      if (first) {
+        first = false;
+        throw new PageTitleConflictError();
+      }
+      return create(space, title, xhtml);
+    };
+    const r = await loadSampleData(deps, input);
+    expect(r.status).toBe('LOADED');
+    expect(titles).toHaveLength(2);
+    expect(titles[1]).toMatch(/^SOP-PAY-014 .* \(2026-01-01 00:00 UTC\)$/);
+    const page = pages.get(r.state.pageId)!;
+    expect(page.title).toBe(titles[1]);
+    expect(page.bodies).toHaveLength(3);
+  });
+
+  it('does not retry other failures, and gives up after one retry', async () => {
+    const { deps } = makeDeps();
+    let calls = 0;
+    deps.createPage = async () => {
+      calls++;
+      throw new Error('boom');
+    };
+    await expect(loadSampleData(deps, input)).rejects.toThrow('boom');
+    expect(calls).toBe(1);
+    calls = 0;
+    deps.createPage = async () => {
+      calls++;
+      throw new PageTitleConflictError();
+    };
+    await expect(loadSampleData(deps, input)).rejects.toBeInstanceOf(PageTitleConflictError);
+    expect(calls).toBe(2);
+  });
+
+  it('recognises the Confluence duplicate-title response only for HTTP 400', () => {
+    expect(isTitleConflict(400, '{"errors":[{"title":"A page with this title already exists: A page already exists in the space with the same title."}]}')).toBe(true);
+    expect(isTitleConflict(500, 'already exists')).toBe(false);
+    expect(isTitleConflict(400, 'bad body')).toBe(false);
+  });
+});
 
 describe('loadSampleData', () => {
   it('creates page versions 1..3 with the expected bodies', async () => {
